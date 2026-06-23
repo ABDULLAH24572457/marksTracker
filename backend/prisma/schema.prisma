@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DATA_ENTRY
+}
+
+enum ScoringCycleStatus {
+  DRAFT
+  ACTIVE
+  REPORTING
+  ARCHIVED
+}
+
+enum ReportType {
+  FINAL_COMPETITION
+  FAMILY
+  COMMITTEE
+}
+
+enum ReportStatus {
+  GENERATED
+  CONFIRMED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  committeeId  String?  @map("committee_id") @db.Uuid
+  committee    Committee? @relation(fields: [committeeId], references: [id], onDelete: Restrict)
+
+  createdScores     Score[]       @relation("ScoreCreatedBy")
+  updatedScores     Score[]       @relation("ScoreUpdatedBy")
+  generatedReports  ReportExport[] @relation("ReportGeneratedBy")
+  confirmedReports  ReportExport[] @relation("ReportConfirmedBy")
+  archivedScoreSets ScoreArchive[] @relation("ScoreArchiveArchivedBy")
+  auditLogs         AuditLog[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Stage {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  families  Family[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("stages")
+}
+
+model Family {
+  id      String @id @default(uuid()) @db.Uuid
+  name    String
+  stageId String @map("stage_id") @db.Uuid
+  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  scores  Score[]
+
+  @@unique([stageId, name])
+  @@map("families")
+}
+
+model Committee {
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String    @unique
+  weightPercentage Decimal   @map("weight_percentage") @db.Decimal(5, 2)
+  isLocked         Boolean   @default(false) @map("is_locked")
+  users            User[]
+  criteria         Criterion[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("committees")
+}
+
+model Criterion {
+  id           String    @id @default(uuid()) @db.Uuid
+  committeeId  String    @map("committee_id") @db.Uuid
+  committee    Committee @relation(fields: [committeeId], references: [id], onDelete: Restrict)
+  title        String
+  description  String?
+  maxScore     Decimal   @map("max_score") @db.Decimal(8, 2)
+  displayOrder Int       @default(0) @map("display_order")
+  scores       Score[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([committeeId])
+  @@map("criteria")
+}
+
+model ScoringCycle {
+  id          String             @id @default(uuid()) @db.Uuid
+  name        String
+  centerName  String?            @map("center_name")
+  eventName   String?            @map("event_name")
+  periodLabel String?            @map("period_label")
+  status      ScoringCycleStatus @default(DRAFT)
+  startsAt    DateTime?          @map("starts_at")
+  endsAt      DateTime?          @map("ends_at")
+  archivedAt  DateTime?          @map("archived_at")
+
+  scores   Score[]
+  reports  ReportExport[]
+  archives ScoreArchive[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("scoring_cycles")
+}
+
+model Score {
+  id             String  @id @default(uuid()) @db.Uuid
+  scoringCycleId String  @map("scoring_cycle_id") @db.Uuid
+  familyId       String  @map("family_id") @db.Uuid
+  criterionId    String  @map("criterion_id") @db.Uuid
+  score          Decimal @db.Decimal(8, 2)
+
+  createdById String  @map("created_by") @db.Uuid
+  updatedById String? @map("updated_by") @db.Uuid
+
+  scoringCycle ScoringCycle @relation(fields: [scoringCycleId], references: [id], onDelete: Restrict)
+  family       Family       @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  criterion    Criterion    @relation(fields: [criterionId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("ScoreCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User?        @relation("ScoreUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([scoringCycleId, familyId, criterionId])
+  @@index([scoringCycleId, criterionId])
+  @@index([familyId])
+  @@map("scores")
+}
+
+model ReportExport {
+  id             String       @id @default(uuid()) @db.Uuid
+  scoringCycleId String       @map("scoring_cycle_id") @db.Uuid
+  type           ReportType
+  status         ReportStatus @default(GENERATED)
+  fileName       String       @map("file_name")
+  storageKey     String       @map("storage_key")
+  checksumSha256 String?      @map("checksum_sha256")
+  generatedById  String       @map("generated_by") @db.Uuid
+  confirmedById  String?      @map("confirmed_by") @db.Uuid
+  generatedAt    DateTime     @default(now()) @map("generated_at")
+  confirmedAt    DateTime?    @map("confirmed_at")
+  metadata        Json?
+
+  scoringCycle ScoringCycle @relation(fields: [scoringCycleId], references: [id], onDelete: Restrict)
+  generatedBy  User         @relation("ReportGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  confirmedBy  User?        @relation("ReportConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([scoringCycleId])
+  @@map("report_exports")
+}
+
+model ScoreArchive {
+  id              String   @id @default(uuid()) @db.Uuid
+  scoringCycleId  String   @map("scoring_cycle_id") @db.Uuid
+  snapshotVersion Int      @default(1) @map("snapshot_version")
+  archivedById    String   @map("archived_by") @db.Uuid
+  archivedAt      DateTime @default(now()) @map("archived_at")
+  formulaVersion  String   @default("normalized-v1") @map("formula_version")
+
+  scoringCycle ScoringCycle         @relation(fields: [scoringCycleId], references: [id], onDelete: Restrict)
+  archivedBy   User                 @relation("ScoreArchiveArchivedBy", fields: [archivedById], references: [id], onDelete: Restrict)
+  items        ScoreArchiveItem[]
+  rankings     ScoreArchiveRanking[]
+
+  @@unique([scoringCycleId, snapshotVersion])
+  @@map("score_archives")
+}
+
+model ScoreArchiveItem {
+  id        String       @id @default(uuid()) @db.Uuid
+  archiveId String       @map("archive_id") @db.Uuid
+  archive   ScoreArchive @relation(fields: [archiveId], references: [id], onDelete: Cascade)
+
+  familyId   String @map("family_id") @db.Uuid
+  familyName String @map("family_name")
+  stageId    String @map("stage_id") @db.Uuid
+  stageName  String @map("stage_name")
+
+  committeeId     String  @map("committee_id") @db.Uuid
+  committeeName   String  @map("committee_name")
+  committeeWeight Decimal @map("committee_weight") @db.Decimal(5, 2)
+
+  criterionId       String  @map("criterion_id") @db.Uuid
+  criterionTitle    String  @map("criterion_title")
+  criterionMaxScore Decimal @map("criterion_max_score") @db.Decimal(8, 2)
+
+  score Decimal @db.Decimal(8, 2)
+
+  @@index([archiveId, familyId])
+  @@index([archiveId, committeeId])
+  @@map("score_archive_items")
+}
+
+model ScoreArchiveRanking {
+  id        String       @id @default(uuid()) @db.Uuid
+  archiveId String       @map("archive_id") @db.Uuid
+  archive   ScoreArchive @relation(fields: [archiveId], references: [id], onDelete: Cascade)
+
+  familyId    String  @map("family_id") @db.Uuid
+  familyName  String  @map("family_name")
+  stageId     String  @map("stage_id") @db.Uuid
+  stageName   String  @map("stage_name")
+  finalScore  Decimal @map("final_score") @db.Decimal(10, 4)
+  overallRank Int     @map("overall_rank")
+  stageRank   Int     @map("stage_rank")
+  breakdown   Json?
+
+  @@unique([archiveId, familyId])
+  @@index([archiveId, stageId])
+  @@map("score_archive_rankings")
+}
+
+model AuditLog {
+  id         String  @id @default(uuid()) @db.Uuid
+  userId     String? @map("user_id") @db.Uuid
+  user       User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String  @map("entity_type")
+  entityId   String? @map("entity_id")
+  oldValue   Json?   @map("old_value")
+  newValue   Json?   @map("new_value")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
