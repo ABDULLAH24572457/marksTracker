@@ -1,0 +1,348 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
+import { CreateScoreDto } from './dto/create-score.dto';
+import { UpdateScoreDto } from './dto/update-score.dto';
+
+const scoreInclude = {
+  scoringCycle: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+    },
+  },
+  family: {
+    select: {
+      id: true,
+      name: true,
+      stage: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  criterion: {
+    select: {
+      id: true,
+      title: true,
+      maxScore: true,
+      committee: {
+        select: {
+          id: true,
+          name: true,
+          isLocked: true,
+        },
+      },
+    },
+  },
+  createdBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  updatedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.ScoreInclude;
+
+type CriterionAccess = {
+  id: string;
+  committeeId: string;
+  maxScore: Prisma.Decimal;
+  committee: {
+    isLocked: boolean;
+  };
+};
+
+@Injectable()
+export class ScoresService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(createScoreDto: CreateScoreDto, user: AuthenticatedUser) {
+    const criterion = await this.getCriterion(createScoreDto.criterionId);
+
+    this.assertCommitteeAccess(criterion, user);
+    this.assertCommitteeIsEditable(criterion, user);
+    this.assertScoreWithinMaximum(createScoreDto.score, criterion.maxScore);
+    await this.ensureFamilyExists(createScoreDto.familyId);
+    await this.ensureScoringCycleExists(createScoreDto.scoringCycleId);
+
+    try {
+      return await this.prisma.score.create({
+        data: {
+          scoringCycleId: createScoreDto.scoringCycleId,
+          familyId: createScoreDto.familyId,
+          criterionId: createScoreDto.criterionId,
+          score: createScoreDto.score,
+          createdById: user.id,
+        },
+        include: scoreInclude,
+      });
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  findAll(user: AuthenticatedUser) {
+    return this.prisma.score.findMany({
+      where:
+        user.role === UserRole.DATA_ENTRY
+          ? {
+              criterion: {
+                committeeId: this.getAssignedCommitteeId(user),
+              },
+            }
+          : undefined,
+      include: scoreInclude,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async findOne(id: string, user: AuthenticatedUser) {
+    const score = await this.prisma.score.findUnique({
+      where: { id },
+      include: scoreInclude,
+    });
+
+    if (!score) {
+      throw new NotFoundException('Score not found.');
+    }
+
+    this.assertCommitteeIdAccess(score.criterion.committee.id, user);
+
+    return score;
+  }
+
+  async update(
+    id: string,
+    updateScoreDto: UpdateScoreDto,
+    user: AuthenticatedUser,
+  ) {
+    const existingScore = await this.prisma.score.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        scoringCycleId: true,
+        familyId: true,
+        criterionId: true,
+        score: true,
+        criterion: {
+          select: {
+            committeeId: true,
+          },
+        },
+      },
+    });
+
+    if (!existingScore) {
+      throw new NotFoundException('Score not found.');
+    }
+
+    this.assertCommitteeIdAccess(existingScore.criterion.committeeId, user);
+
+    const scoringCycleId =
+      updateScoreDto.scoringCycleId ?? existingScore.scoringCycleId;
+    const familyId = updateScoreDto.familyId ?? existingScore.familyId;
+    const criterionId = updateScoreDto.criterionId ?? existingScore.criterionId;
+    const score = updateScoreDto.score ?? existingScore.score.toNumber();
+    const criterion = await this.getCriterion(criterionId);
+
+    this.assertCommitteeAccess(criterion, user);
+    this.assertCommitteeIsEditable(criterion, user);
+    this.assertScoreWithinMaximum(score, criterion.maxScore);
+    await this.ensureFamilyExists(familyId);
+    await this.ensureScoringCycleExists(scoringCycleId);
+
+    try {
+      return await this.prisma.score.update({
+        where: { id },
+        data: {
+          scoringCycleId,
+          familyId,
+          criterionId,
+          score,
+          updatedById: user.id,
+        },
+        include: scoreInclude,
+      });
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  async remove(id: string, user: AuthenticatedUser) {
+    const existingScore = await this.prisma.score.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        criterion: {
+          select: {
+            committeeId: true,
+            committee: {
+              select: {
+                isLocked: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existingScore) {
+      throw new NotFoundException('Score not found.');
+    }
+
+    this.assertCommitteeIdAccess(existingScore.criterion.committeeId, user);
+    this.assertCommitteeIsEditable(existingScore.criterion, user);
+
+    try {
+      return await this.prisma.score.delete({
+        where: { id },
+        include: scoreInclude,
+      });
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  private async getCriterion(criterionId: string): Promise<CriterionAccess> {
+    const criterion = await this.prisma.criterion.findUnique({
+      where: { id: criterionId },
+      select: {
+        id: true,
+        committeeId: true,
+        maxScore: true,
+        committee: {
+          select: {
+            isLocked: true,
+          },
+        },
+      },
+    });
+
+    if (!criterion) {
+      throw new BadRequestException('Criterion does not exist.');
+    }
+
+    return criterion;
+  }
+
+  private async ensureFamilyExists(familyId: string) {
+    const family = await this.prisma.family.findUnique({
+      where: { id: familyId },
+      select: { id: true },
+    });
+
+    if (!family) {
+      throw new BadRequestException('Family does not exist.');
+    }
+  }
+
+  private async ensureScoringCycleExists(scoringCycleId: string) {
+    const scoringCycle = await this.prisma.scoringCycle.findUnique({
+      where: { id: scoringCycleId },
+      select: { id: true },
+    });
+
+    if (!scoringCycle) {
+      throw new BadRequestException('Scoring cycle does not exist.');
+    }
+  }
+
+  private assertScoreWithinMaximum(
+    score: number,
+    maximum: Prisma.Decimal,
+  ) {
+    if (new Prisma.Decimal(score).greaterThan(maximum)) {
+      throw new BadRequestException(
+        `Score cannot exceed the criterion maximum of ${maximum.toString()}.`,
+      );
+    }
+  }
+
+  private assertCommitteeAccess(
+    criterion: Pick<CriterionAccess, 'committeeId'>,
+    user: AuthenticatedUser,
+  ) {
+    this.assertCommitteeIdAccess(criterion.committeeId, user);
+  }
+
+  private assertCommitteeIdAccess(
+    committeeId: string,
+    user: AuthenticatedUser,
+  ) {
+    if (user.role !== UserRole.DATA_ENTRY) {
+      return;
+    }
+
+    const assignedCommitteeId = this.getAssignedCommitteeId(user);
+
+    if (committeeId !== assignedCommitteeId) {
+      throw new ForbiddenException(
+        'You cannot access scores from another committee.',
+      );
+    }
+  }
+
+  private assertCommitteeIsEditable(
+    criterion: { committee: { isLocked: boolean } },
+    user: AuthenticatedUser,
+  ) {
+    if (
+      user.role === UserRole.DATA_ENTRY &&
+      criterion.committee.isLocked
+    ) {
+      throw new ForbiddenException('Your assigned committee is locked.');
+    }
+  }
+
+  private getAssignedCommitteeId(user: AuthenticatedUser): string {
+    if (!user.committeeId) {
+      throw new ForbiddenException(
+        'A committee assignment is required to access scores.',
+      );
+    }
+
+    return user.committeeId;
+  }
+
+  private handlePrismaError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        throw new ConflictException(
+          'A score already exists for this family and criterion in the scoring cycle.',
+        );
+      }
+
+      if (error.code === 'P2003') {
+        throw new BadRequestException(
+          'One or more related score records do not exist.',
+        );
+      }
+
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Score not found.');
+      }
+    }
+
+    throw error;
+  }
+}
