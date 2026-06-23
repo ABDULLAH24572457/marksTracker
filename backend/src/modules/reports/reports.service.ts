@@ -50,7 +50,6 @@ export class ReportsService {
       const page = await browser.newPage();
       await page.setContent(
         this.buildDetailedResultsHtml(
-          scoringCycle.name,
           rankings,
           committees,
         ),
@@ -279,15 +278,11 @@ export class ReportsService {
   }
 
   private buildDetailedResultsHtml(
-    scoringCycleName: string,
     rankings: FamilyRanking[],
     committees: Array<{ id: string; name: string }>,
   ) {
     const fontBase64 = readFileSync(ARABIC_FONT_PATH).toString('base64');
-    const generatedAt = new Intl.DateTimeFormat('ar-SA', {
-      dateStyle: 'full',
-      timeStyle: 'short',
-    }).format(new Date());
+    const generatedAt = this.formatReportDate(new Date());
     const stageGroups = new Map<string, FamilyRanking[]>();
 
     for (const ranking of rankings) {
@@ -328,8 +323,8 @@ export class ReportsService {
       margin: 0;
       padding: 0;
       direction: rtl;
-      color: #111827;
-      background: #ffffff;
+      color: #000000;
+      background: #FFFFFF;
       font-family: "Noto Sans Arabic", Arial, sans-serif;
       font-size: 10px;
       line-height: 1.4;
@@ -349,8 +344,8 @@ export class ReportsService {
       font-weight: 700;
     }
     .report-meta {
-      margin-top: 4px;
-      color: #475569;
+      margin-top: 5px;
+      color: #000000;
       font-size: 11px;
     }
     .stage-section {
@@ -378,19 +373,20 @@ export class ReportsService {
       padding: 6px 3px;
       color: #ffffff;
       background: #18174A;
-      border: 1px solid #aeb8c8;
+      border: 1px solid #DDE3EA;
       font-weight: 700;
       text-align: center;
       line-height: 1.35;
     }
     td {
       padding: 7px 3px;
-      border: 1px solid #cbd2dc;
+      color: #000000;
+      background: #FFFFFF;
+      border: 1px solid #DDE3EA;
       text-align: center;
       vertical-align: middle;
     }
-    tbody tr:nth-child(even) td { background: #f8fafc; }
-    tbody tr.first-place td { background: #fff4cc; }
+    tbody tr:nth-child(even) td { background: #F8FAFC; }
     .family-name {
       text-align: right;
       font-weight: 700;
@@ -403,12 +399,15 @@ export class ReportsService {
     .committee-column { width: auto; }
     .total-column { width: 7%; }
     .committee-group {
-      background: #315170;
+      color: #000000;
+      background: #94B8AB;
       font-size: 9px;
     }
-    .committee-group.alt { background: #3e6670; }
+    .committee-group.tone-1 { background: #67CDFF; }
+    .committee-group.tone-2 { background: #F8FAFC; }
     .sub-header {
-      background: #546477;
+      color: #000000;
+      background: #EAF2F0;
       font-size: 8px;
     }
     .weighted {
@@ -431,8 +430,7 @@ export class ReportsService {
 <body>
   <header class="report-header">
     <h1 class="report-title">النتائج العامة للتقييم</h1>
-    <div class="report-meta">التقييم الخاص بالراية</div>
-    <div class="report-meta">${this.escapeHtml(scoringCycleName)} · ${this.escapeHtml(generatedAt)}</div>
+    <div class="report-meta">تاريخ التقرير: ${generatedAt}</div>
   </header>
   ${content}
 </body>
@@ -447,7 +445,7 @@ export class ReportsService {
     const committeeHeaders = committees
       .map(
         (committee, index) => `
-          <th class="committee-group ${index % 2 === 1 ? 'alt' : ''}" colspan="2">
+          <th class="committee-group tone-${index % 3}" colspan="2">
             ${this.escapeHtml(committee.name)}
           </th>`,
       )
@@ -483,7 +481,7 @@ export class ReportsService {
           .join('');
 
         return `
-          <tr class="${ranking.rank === 1 ? 'first-place' : ''}">
+          <tr>
             <td>${ranking.rank}</td>
             <td class="family-name">${this.escapeHtml(ranking.familyName)}</td>
             <td>${this.formatScore(ranking.totalScore)}%</td>
@@ -562,6 +560,14 @@ export class ReportsService {
 
   private formatScore(value: number) {
     return Number(value.toFixed(2)).toString();
+  }
+
+  private formatReportDate(date: Date) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+
+    return `${day} / ${month} / ${year}`;
   }
 
   private escapeHtml(value: string) {
