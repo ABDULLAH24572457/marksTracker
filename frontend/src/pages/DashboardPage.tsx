@@ -855,58 +855,91 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
         className="mb-6 grid gap-4 border border-slate-200 bg-white p-4 shadow-panel md:grid-cols-2 xl:grid-cols-5"
         style={{ borderRadius: 8 }}
       >
-        <input
-          className="field"
-          placeholder="اسم المعيار"
-          value={form.title}
-          onChange={(event) => setForm({ ...form, title: event.target.value })}
-          required
-        />
-        <select
-          className="field"
-          value={form.committeeId}
-          onChange={(event) =>
-            setForm({ ...form, committeeId: event.target.value })
-          }
-          required
-        >
-          <option value="">اختر اللجنة</option>
-          {committees.map((committee) => (
-            <option key={committee.id} value={committee.id}>
-              {committee.name}
-            </option>
-          ))}
-        </select>
-        <input
-          className="field"
-          type="number"
-          min="0.01"
-          step="0.01"
-          placeholder="الدرجة القصوى"
-          value={form.maxScore}
-          onChange={(event) =>
-            setForm({ ...form, maxScore: Number(event.target.value) })
-          }
-          required
-        />
-        <input
-          className="field"
-          type="number"
-          min="0"
-          placeholder="الترتيب"
-          value={form.displayOrder ?? 0}
-          onChange={(event) =>
-            setForm({ ...form, displayOrder: Number(event.target.value) })
-          }
-        />
-        <input
-          className="field"
-          placeholder="الوصف (اختياري)"
-          value={form.description ?? ""}
-          onChange={(event) =>
-            setForm({ ...form, description: event.target.value })
-          }
-        />
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-800">
+            اسم المعيار
+          </span>
+          <input
+            className="field"
+            value={form.title}
+            onChange={(event) =>
+              setForm({ ...form, title: event.target.value })
+            }
+            required
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-800">
+            اللجنة
+          </span>
+          <select
+            className="field"
+            value={form.committeeId}
+            onChange={(event) =>
+              setForm({ ...form, committeeId: event.target.value })
+            }
+            required
+          >
+            <option value="">اختر اللجنة</option>
+            {committees.map((committee) => (
+              <option key={committee.id} value={committee.id}>
+                {committee.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-800">
+            الدرجة القصوى
+          </span>
+          <input
+            className="field"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={form.maxScore}
+            onChange={(event) =>
+              setForm({ ...form, maxScore: Number(event.target.value) })
+            }
+            required
+          />
+          <span className="mt-1.5 block text-xs leading-5 text-slate-500">
+            أعلى درجة يمكن منحها لهذا المعيار
+          </span>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-800">
+            ترتيب العرض
+          </span>
+          <input
+            className="field"
+            type="number"
+            min="0"
+            value={form.displayOrder ?? 0}
+            onChange={(event) =>
+              setForm({ ...form, displayOrder: Number(event.target.value) })
+            }
+          />
+          <span className="mt-1.5 block text-xs leading-5 text-slate-500">
+            يحدد ترتيب ظهور المعيار داخل اللجنة
+          </span>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-slate-800">
+            الوصف (اختياري)
+          </span>
+          <input
+            className="field"
+            value={form.description ?? ""}
+            onChange={(event) =>
+              setForm({ ...form, description: event.target.value })
+            }
+          />
+        </label>
         <div className="md:col-span-2 xl:col-span-5">
           <FormActions
             editing={Boolean(editingId)}
