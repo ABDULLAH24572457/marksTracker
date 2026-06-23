@@ -15,8 +15,10 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
   type FormEvent,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   committeesApi,
   criteriaApi,
@@ -48,8 +50,22 @@ const tabs = [
   { id: "criteria" as const, label: "المعايير", icon: ClipboardCheck },
 ];
 
+const DASHBOARD_TAB_KEY = "marks_tracker_dashboard_tab";
+
+function isDashboardTab(value: string | null): value is DashboardTab {
+  return tabs.some((tab) => tab.id === value);
+}
+
 export function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>("users");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
+    const queryTab = searchParams.get("tab");
+    const savedTab = localStorage.getItem(DASHBOARD_TAB_KEY);
+
+    if (isDashboardTab(queryTab)) return queryTab;
+    if (isDashboardTab(savedTab)) return savedTab;
+    return "users";
+  });
   const [committees, setCommittees] = useState<Committee[]>([]);
   const [loadingCommittees, setLoadingCommittees] = useState(true);
   const [resetOpen, setResetOpen] = useState(false);
@@ -69,6 +85,24 @@ export function DashboardPage() {
   useEffect(() => {
     void loadCommittees();
   }, [loadCommittees]);
+
+  useEffect(() => {
+    const queryTab = searchParams.get("tab");
+
+    if (isDashboardTab(queryTab)) {
+      setActiveTab(queryTab);
+      localStorage.setItem(DASHBOARD_TAB_KEY, queryTab);
+      return;
+    }
+
+    setSearchParams({ tab: activeTab }, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
+
+  const selectTab = (tab: DashboardTab) => {
+    setActiveTab(tab);
+    localStorage.setItem(DASHBOARD_TAB_KEY, tab);
+    setSearchParams({ tab }, { replace: true });
+  };
 
   const resetScores = async () => {
     setResetBusy(true);
@@ -124,7 +158,7 @@ export function DashboardPage() {
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => selectTab(id)}
             className={`flex min-w-max items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition ${
               activeTab === id
                 ? "border-primary text-primary"
@@ -229,27 +263,89 @@ function SectionShell({
   );
 }
 
-function FormActions({
-  editing,
+function EditModal({
+  title,
   busy,
-  onCancel,
+  error,
+  onClose,
+  onSubmit,
+  children,
 }: {
-  editing: boolean;
+  title: string;
   busy: boolean;
-  onCancel: () => void;
+  error: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent) => void;
+  children: ReactNode;
 }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [busy, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/45 px-4 py-8"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-dialog-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-2xl border border-slate-200 bg-white p-6 shadow-panel"
+        style={{ borderRadius: 8 }}
+      >
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h2 id="edit-dialog-title" className="text-xl font-bold text-primary">
+            {title}
+          </h2>
+          <button
+            type="button"
+            className="icon-button"
+            disabled={busy}
+            onClick={onClose}
+            title="إغلاق"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {error && <StatusMessage message={error} />}
+        <div className="grid gap-4 md:grid-cols-2">{children}</div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
+            إلغاء
+          </button>
+          <button className="btn-primary" disabled={busy}>
+            <Save size={17} />
+            {busy ? "جارٍ الحفظ..." : "حفظ التعديل"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function FormActions({ busy }: { busy: boolean }) {
   return (
     <div className="flex items-center gap-2">
       <button className="btn-primary" disabled={busy}>
-        {editing ? <Save size={17} /> : <Plus size={17} />}
-        {editing ? "حفظ التعديل" : "إضافة"}
+        <Plus size={17} />
+        إضافة
       </button>
-      {editing && (
-        <button type="button" className="btn-secondary" onClick={onCancel}>
-          <X size={17} />
-          إلغاء
-        </button>
-      )}
     </div>
   );
 }
@@ -270,10 +366,13 @@ function UsersSection({
   };
   const [users, setUsers] = useState<User[]>([]);
   const [form, setForm] = useState<UserInput>(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState<UserInput>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
   const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -291,11 +390,6 @@ function UsersSection({
     void load();
   }, [load]);
 
-  const reset = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -306,17 +400,11 @@ function UsersSection({
     };
 
     try {
-      if (editingId) {
-        const updatePayload: Partial<UserInput> = { ...payload };
-        if (!updatePayload.password) delete updatePayload.password;
-        await usersApi.update(editingId, updatePayload);
-      } else {
-        await usersApi.create({
-          ...payload,
-          password: form.password ?? "",
-        });
-      }
-      reset();
+      await usersApi.create({
+        ...payload,
+        password: form.password ?? "",
+      });
+      setForm(emptyForm);
       await load();
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -326,15 +414,39 @@ function UsersSection({
   };
 
   const edit = (user: User) => {
-    setEditingId(user.id);
-    setForm({
+    setEditingUser(user);
+    setEditError("");
+    setEditForm({
       name: user.name,
       email: user.email,
       password: "",
       role: user.role,
       committeeId: user.committeeId,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingUser) return;
+
+    setEditBusy(true);
+    setEditError("");
+    const payload: Partial<UserInput> = {
+      ...editForm,
+      committeeId:
+        editForm.role === "ADMIN" ? null : editForm.committeeId,
+    };
+    if (!payload.password) delete payload.password;
+
+    try {
+      await usersApi.update(editingUser.id, payload);
+      setEditingUser(null);
+      await load();
+    } catch (requestError) {
+      setEditError(getErrorMessage(requestError));
+    } finally {
+      setEditBusy(false);
+    }
   };
 
   const remove = async (user: User) => {
@@ -375,13 +487,13 @@ function UsersSection({
           className="field"
           type="password"
           dir="ltr"
-          placeholder={editingId ? "كلمة مرور جديدة (اختياري)" : "كلمة المرور"}
+          placeholder="كلمة المرور"
           minLength={8}
           value={form.password ?? ""}
           onChange={(event) =>
             setForm({ ...form, password: event.target.value })
           }
-          required={!editingId}
+          required
         />
         <select
           className="field"
@@ -415,11 +527,7 @@ function UsersSection({
           ))}
         </select>
         <div className="md:col-span-2 xl:col-span-5">
-          <FormActions
-            editing={Boolean(editingId)}
-            busy={busy}
-            onCancel={reset}
-          />
+          <FormActions busy={busy} />
         </div>
       </form>
 
@@ -476,6 +584,99 @@ function UsersSection({
           </tbody>
         </table>
       </div>
+
+      {editingUser && (
+        <EditModal
+          title="تعديل المستخدم"
+          busy={editBusy}
+          error={editError}
+          onClose={() => setEditingUser(null)}
+          onSubmit={submitEdit}
+        >
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">الاسم</span>
+            <input
+              className="field"
+              value={editForm.name}
+              onChange={(event) =>
+                setEditForm({ ...editForm, name: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">
+              البريد الإلكتروني
+            </span>
+            <input
+              className="field"
+              type="email"
+              dir="ltr"
+              value={editForm.email}
+              onChange={(event) =>
+                setEditForm({ ...editForm, email: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">
+              كلمة مرور جديدة (اختياري)
+            </span>
+            <input
+              className="field"
+              type="password"
+              dir="ltr"
+              minLength={8}
+              value={editForm.password ?? ""}
+              onChange={(event) =>
+                setEditForm({ ...editForm, password: event.target.value })
+              }
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">الصلاحية</span>
+            <select
+              className="field"
+              value={editForm.role}
+              onChange={(event) => {
+                const role = event.target.value as UserRole;
+                setEditForm({
+                  ...editForm,
+                  role,
+                  committeeId:
+                    role === "ADMIN" ? null : editForm.committeeId || "",
+                });
+              }}
+            >
+              <option value="DATA_ENTRY">مدخل درجات</option>
+              <option value="ADMIN">مدير</option>
+            </select>
+          </label>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">اللجنة</span>
+            <select
+              className="field"
+              value={editForm.committeeId ?? ""}
+              disabled={editForm.role === "ADMIN" || committeesLoading}
+              required={editForm.role === "DATA_ENTRY"}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  committeeId: event.target.value,
+                })
+              }
+            >
+              <option value="">اختر اللجنة</option>
+              {committees.map((committee) => (
+                <option key={committee.id} value={committee.id}>
+                  {committee.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </EditModal>
+      )}
     </SectionShell>
   );
 }
@@ -492,28 +693,52 @@ function CommitteesSection({
     weightPercentage: 0,
   };
   const [form, setForm] = useState<CommitteeInput>(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingCommittee, setEditingCommittee] =
+    useState<Committee | null>(null);
+  const [editForm, setEditForm] = useState<CommitteeInput>(emptyForm);
   const [busy, setBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
   const [error, setError] = useState("");
-
-  const reset = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-  };
+  const [editError, setEditError] = useState("");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (editingId) await committeesApi.update(editingId, form);
-      else await committeesApi.create(form);
-      reset();
+      await committeesApi.create(form);
+      setForm(emptyForm);
       await onRefresh();
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openEdit = (committee: Committee) => {
+    setEditingCommittee(committee);
+    setEditError("");
+    setEditForm({
+      name: committee.name,
+      weightPercentage: Number(committee.weightPercentage),
+    });
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingCommittee) return;
+
+    setEditBusy(true);
+    setEditError("");
+    try {
+      await committeesApi.update(editingCommittee.id, editForm);
+      setEditingCommittee(null);
+      await onRefresh();
+    } catch (requestError) {
+      setEditError(getErrorMessage(requestError));
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -555,11 +780,7 @@ function CommitteesSection({
           }
           required
         />
-        <FormActions
-          editing={Boolean(editingId)}
-          busy={busy}
-          onCancel={reset}
-        />
+        <FormActions busy={busy} />
       </form>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -581,13 +802,7 @@ function CommitteesSection({
               <button
                 className="icon-button"
                 title="تعديل"
-                onClick={() => {
-                  setEditingId(committee.id);
-                  setForm({
-                    name: committee.name,
-                    weightPercentage: Number(committee.weightPercentage),
-                  });
-                }}
+                onClick={() => openEdit(committee)}
               >
                 <Pencil size={16} />
               </button>
@@ -602,6 +817,46 @@ function CommitteesSection({
           </article>
         ))}
       </div>
+
+      {editingCommittee && (
+        <EditModal
+          title="تعديل اللجنة"
+          busy={editBusy}
+          error={editError}
+          onClose={() => setEditingCommittee(null)}
+          onSubmit={submitEdit}
+        >
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">اسم اللجنة</span>
+            <input
+              className="field"
+              value={editForm.name}
+              onChange={(event) =>
+                setEditForm({ ...editForm, name: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">الوزن %</span>
+            <input
+              className="field"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={editForm.weightPercentage}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  weightPercentage: Number(event.target.value),
+                })
+              }
+              required
+            />
+          </label>
+        </EditModal>
+      )}
     </SectionShell>
   );
 }
@@ -609,10 +864,13 @@ function CommitteesSection({
 function FamiliesSection() {
   const [families, setFamilies] = useState<Family[]>([]);
   const [form, setForm] = useState({ name: "", stageId: "" });
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingFamily, setEditingFamily] = useState<Family | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", stageId: "" });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
   const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
 
   const stages = useMemo(
     () =>
@@ -645,30 +903,47 @@ function FamiliesSection() {
     void load();
   }, [load]);
 
-  const reset = () => {
-    setEditingId(null);
-    setForm({
-      name: "",
-      stageId: stages[0]?.id ?? "",
-    });
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (editingId) {
-        await familiesApi.update(editingId, form);
-      } else {
-        await familiesApi.create(form);
-      }
-      reset();
+      await familiesApi.create(form);
+      setForm({
+        name: "",
+        stageId: stages[0]?.id ?? "",
+      });
       await load();
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openEdit = (family: Family) => {
+    setEditingFamily(family);
+    setEditError("");
+    setEditForm({
+      name: family.name,
+      stageId: family.stageId,
+    });
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingFamily) return;
+
+    setEditBusy(true);
+    setEditError("");
+    try {
+      await familiesApi.update(editingFamily.id, editForm);
+      setEditingFamily(null);
+      await load();
+    } catch (requestError) {
+      setEditError(getErrorMessage(requestError));
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -714,11 +989,7 @@ function FamiliesSection() {
             </option>
           ))}
         </select>
-        <FormActions
-          editing={Boolean(editingId)}
-          busy={busy}
-          onCancel={reset}
-        />
+        <FormActions busy={busy} />
       </form>
 
       <div className="overflow-x-auto border border-slate-200 bg-white">
@@ -745,13 +1016,7 @@ function FamiliesSection() {
                       <button
                         className="icon-button"
                         title="تعديل"
-                        onClick={() => {
-                          setEditingId(family.id);
-                          setForm({
-                            name: family.name,
-                            stageId: family.stageId,
-                          });
-                        }}
+                        onClick={() => openEdit(family)}
                       >
                         <Pencil size={16} />
                       </button>
@@ -770,6 +1035,46 @@ function FamiliesSection() {
           </tbody>
         </table>
       </div>
+
+      {editingFamily && (
+        <EditModal
+          title="تعديل الأسرة"
+          busy={editBusy}
+          error={editError}
+          onClose={() => setEditingFamily(null)}
+          onSubmit={submitEdit}
+        >
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">اسم الأسرة</span>
+            <input
+              className="field"
+              value={editForm.name}
+              onChange={(event) =>
+                setEditForm({ ...editForm, name: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">المرحلة</span>
+            <select
+              className="field"
+              value={editForm.stageId}
+              onChange={(event) =>
+                setEditForm({ ...editForm, stageId: event.target.value })
+              }
+              required
+            >
+              <option value="">اختر المرحلة</option>
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </EditModal>
+      )}
     </SectionShell>
   );
 }
@@ -784,10 +1089,14 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
   };
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [form, setForm] = useState<CriterionInput>(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingCriterion, setEditingCriterion] =
+    useState<Criterion | null>(null);
+  const [editForm, setEditForm] = useState<CriterionInput>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
   const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
 
   const grouped = useMemo(
     () =>
@@ -816,24 +1125,47 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
     void load();
   }, [load]);
 
-  const reset = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (editingId) await criteriaApi.update(editingId, form);
-      else await criteriaApi.create(form);
-      reset();
+      await criteriaApi.create(form);
+      setForm(emptyForm);
       await load();
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openEdit = (criterion: Criterion) => {
+    setEditingCriterion(criterion);
+    setEditError("");
+    setEditForm({
+      title: criterion.title,
+      description: criterion.description ?? "",
+      maxScore: Number(criterion.maxScore),
+      committeeId: criterion.committeeId,
+      displayOrder: criterion.displayOrder,
+    });
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingCriterion) return;
+
+    setEditBusy(true);
+    setEditError("");
+    try {
+      await criteriaApi.update(editingCriterion.id, editForm);
+      setEditingCriterion(null);
+      await load();
+    } catch (requestError) {
+      setEditError(getErrorMessage(requestError));
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -941,11 +1273,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
           />
         </label>
         <div className="md:col-span-2 xl:col-span-5">
-          <FormActions
-            editing={Boolean(editingId)}
-            busy={busy}
-            onCancel={reset}
-          />
+          <FormActions busy={busy} />
         </div>
       </form>
 
@@ -987,16 +1315,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
                       <button
                         className="icon-button"
                         title="تعديل"
-                        onClick={() => {
-                          setEditingId(criterion.id);
-                          setForm({
-                            title: criterion.title,
-                            description: criterion.description ?? "",
-                            maxScore: Number(criterion.maxScore),
-                            committeeId: criterion.committeeId,
-                            displayOrder: criterion.displayOrder,
-                          });
-                        }}
+                        onClick={() => openEdit(criterion)}
                       >
                         <Pencil size={16} />
                       </button>
@@ -1014,6 +1333,108 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
             </section>
           ))}
         </div>
+      )}
+
+      {editingCriterion && (
+        <EditModal
+          title="تعديل المعيار"
+          busy={editBusy}
+          error={editError}
+          onClose={() => setEditingCriterion(null)}
+          onSubmit={submitEdit}
+        >
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">
+              اسم المعيار
+            </span>
+            <input
+              className="field"
+              value={editForm.title}
+              onChange={(event) =>
+                setEditForm({ ...editForm, title: event.target.value })
+              }
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">اللجنة</span>
+            <select
+              className="field"
+              value={editForm.committeeId}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  committeeId: event.target.value,
+                })
+              }
+              required
+            >
+              <option value="">اختر اللجنة</option>
+              {committees.map((committee) => (
+                <option key={committee.id} value={committee.id}>
+                  {committee.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">
+              الدرجة القصوى
+            </span>
+            <input
+              className="field"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={editForm.maxScore}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  maxScore: Number(event.target.value),
+                })
+              }
+              required
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-slate-500">
+              أعلى درجة يمكن منحها لهذا المعيار
+            </span>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold">
+              ترتيب العرض
+            </span>
+            <input
+              className="field"
+              type="number"
+              min="0"
+              value={editForm.displayOrder ?? 0}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  displayOrder: Number(event.target.value),
+                })
+              }
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-slate-500">
+              يحدد ترتيب ظهور المعيار داخل اللجنة
+            </span>
+          </label>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">
+              الوصف (اختياري)
+            </span>
+            <textarea
+              className="field min-h-28 resize-y"
+              value={editForm.description ?? ""}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  description: event.target.value,
+                })
+              }
+            />
+          </label>
+        </EditModal>
       )}
     </SectionShell>
   );
