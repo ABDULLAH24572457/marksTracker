@@ -9,8 +9,14 @@ import {
   UserCog,
   UsersRound,
   X,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   committeesApi,
   criteriaApi,
@@ -20,9 +26,9 @@ import {
   type CommitteeInput,
   type CriterionInput,
   type UserInput,
-} from '../api/services';
-import { PageHeader } from '../components/PageHeader';
-import { StatusMessage } from '../components/StatusMessage';
+} from "../api/services";
+import { PageHeader } from "../components/PageHeader";
+import { StatusMessage } from "../components/StatusMessage";
 import type {
   Committee,
   Criterion,
@@ -30,26 +36,26 @@ import type {
   Stage,
   User,
   UserRole,
-} from '../types';
-import { getErrorMessage } from '../utils/errors';
+} from "../types";
+import { getErrorMessage } from "../utils/errors";
 
-type DashboardTab = 'users' | 'committees' | 'families' | 'criteria';
+type DashboardTab = "users" | "committees" | "families" | "criteria";
 
 const tabs = [
-  { id: 'users' as const, label: 'المستخدمون', icon: UserCog },
-  { id: 'committees' as const, label: 'اللجان', icon: UsersRound },
-  { id: 'families' as const, label: 'الأسر', icon: House },
-  { id: 'criteria' as const, label: 'المعايير', icon: ClipboardCheck },
+  { id: "users" as const, label: "المستخدمون", icon: UserCog },
+  { id: "committees" as const, label: "اللجان", icon: UsersRound },
+  { id: "families" as const, label: "الأسر", icon: House },
+  { id: "criteria" as const, label: "المعايير", icon: ClipboardCheck },
 ];
 
 export function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('users');
+  const [activeTab, setActiveTab] = useState<DashboardTab>("users");
   const [committees, setCommittees] = useState<Committee[]>([]);
   const [loadingCommittees, setLoadingCommittees] = useState(true);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
-  const [resetError, setResetError] = useState('');
-  const [resetSuccess, setResetSuccess] = useState('');
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
 
   const loadCommittees = useCallback(async () => {
     setLoadingCommittees(true);
@@ -66,14 +72,14 @@ export function DashboardPage() {
 
   const resetScores = async () => {
     setResetBusy(true);
-    setResetError('');
-    setResetSuccess('');
+    setResetError("");
+    setResetSuccess("");
 
     try {
       const result = await scoresApi.reset();
       setResetSuccess(result.message);
       setResetOpen(false);
-      window.dispatchEvent(new Event('scores:reset'));
+      window.dispatchEvent(new Event("scores:reset"));
     } catch (requestError) {
       setResetError(getErrorMessage(requestError));
     } finally {
@@ -88,9 +94,7 @@ export function DashboardPage() {
         subtitle="إدارة المستخدمين واللجان ومعايير التقييم"
       />
 
-      {resetSuccess && (
-        <StatusMessage message={resetSuccess} tone="success" />
-      )}
+      {resetSuccess && <StatusMessage message={resetSuccess} tone="success" />}
       {resetError && <StatusMessage message={resetError} />}
 
       <section
@@ -107,7 +111,7 @@ export function DashboardPage() {
           className="inline-flex min-h-10 items-center justify-center gap-2 bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800"
           style={{ borderRadius: 6 }}
           onClick={() => {
-            setResetError('');
+            setResetError("");
             setResetOpen(true);
           }}
         >
@@ -123,8 +127,8 @@ export function DashboardPage() {
             onClick={() => setActiveTab(id)}
             className={`flex min-w-max items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition ${
               activeTab === id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-slate-500 hover:text-primary'
+                ? "border-primary text-primary"
+                : "border-transparent text-slate-500 hover:text-primary"
             }`}
           >
             <Icon size={18} />
@@ -133,22 +137,17 @@ export function DashboardPage() {
         ))}
       </div>
 
-      {activeTab === 'users' && (
+      {activeTab === "users" && (
         <UsersSection
           committees={committees}
           committeesLoading={loadingCommittees}
         />
       )}
-      {activeTab === 'committees' && (
-        <CommitteesSection
-          committees={committees}
-          onRefresh={loadCommittees}
-        />
+      {activeTab === "committees" && (
+        <CommitteesSection committees={committees} onRefresh={loadCommittees} />
       )}
-      {activeTab === 'families' && <FamiliesSection />}
-      {activeTab === 'criteria' && (
-        <CriteriaSection committees={committees} />
-      )}
+      {activeTab === "families" && <FamiliesSection />}
+      {activeTab === "criteria" && <CriteriaSection committees={committees} />}
 
       {resetOpen && (
         <div
@@ -173,8 +172,8 @@ export function DashboardPage() {
               تأكيد تصفير الدرجات
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-600">
-              سيتم حذف جميع الدرجات الحالية ولا يمكن التراجع عن هذا الإجراء.
-              هل أنت متأكد؟
+              سيتم حذف جميع الدرجات الحالية ولا يمكن التراجع عن هذا الإجراء. هل
+              أنت متأكد؟
             </p>
 
             {resetError && (
@@ -198,7 +197,7 @@ export function DashboardPage() {
                 onClick={() => void resetScores()}
               >
                 <RotateCcw size={17} />
-                {resetBusy ? 'جارٍ التصفير...' : 'نعم، صفر الدرجات'}
+                {resetBusy ? "جارٍ التصفير..." : "نعم، صفر الدرجات"}
               </button>
             </div>
           </div>
@@ -243,7 +242,7 @@ function FormActions({
     <div className="flex items-center gap-2">
       <button className="btn-primary" disabled={busy}>
         {editing ? <Save size={17} /> : <Plus size={17} />}
-        {editing ? 'حفظ التعديل' : 'إضافة'}
+        {editing ? "حفظ التعديل" : "إضافة"}
       </button>
       {editing && (
         <button type="button" className="btn-secondary" onClick={onCancel}>
@@ -263,22 +262,22 @@ function UsersSection({
   committeesLoading: boolean;
 }) {
   const emptyForm: UserInput = {
-    name: '',
-    email: '',
-    password: '',
-    role: 'DATA_ENTRY',
-    committeeId: '',
+    name: "",
+    email: "",
+    password: "",
+    role: "DATA_ENTRY",
+    committeeId: "",
   };
   const [users, setUsers] = useState<User[]>([]);
   const [form, setForm] = useState<UserInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       setUsers(await usersApi.list());
     } catch (requestError) {
@@ -300,10 +299,10 @@ function UsersSection({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+    setError("");
     const payload = {
       ...form,
-      committeeId: form.role === 'ADMIN' ? null : form.committeeId,
+      committeeId: form.role === "ADMIN" ? null : form.committeeId,
     };
 
     try {
@@ -314,7 +313,7 @@ function UsersSection({
       } else {
         await usersApi.create({
           ...payload,
-          password: form.password ?? '',
+          password: form.password ?? "",
         });
       }
       reset();
@@ -331,11 +330,11 @@ function UsersSection({
     setForm({
       name: user.name,
       email: user.email,
-      password: '',
+      password: "",
       role: user.role,
       committeeId: user.committeeId,
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const remove = async (user: User) => {
@@ -376,9 +375,9 @@ function UsersSection({
           className="field"
           type="password"
           dir="ltr"
-          placeholder={editingId ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور'}
+          placeholder={editingId ? "كلمة مرور جديدة (اختياري)" : "كلمة المرور"}
           minLength={8}
-          value={form.password ?? ''}
+          value={form.password ?? ""}
           onChange={(event) =>
             setForm({ ...form, password: event.target.value })
           }
@@ -392,7 +391,7 @@ function UsersSection({
             setForm({
               ...form,
               role,
-              committeeId: role === 'ADMIN' ? null : form.committeeId || '',
+              committeeId: role === "ADMIN" ? null : form.committeeId || "",
             });
           }}
         >
@@ -401,9 +400,9 @@ function UsersSection({
         </select>
         <select
           className="field"
-          value={form.committeeId ?? ''}
-          disabled={form.role === 'ADMIN' || committeesLoading}
-          required={form.role === 'DATA_ENTRY'}
+          value={form.committeeId ?? ""}
+          disabled={form.role === "ADMIN" || committeesLoading}
+          required={form.role === "DATA_ENTRY"}
           onChange={(event) =>
             setForm({ ...form, committeeId: event.target.value })
           }
@@ -416,7 +415,11 @@ function UsersSection({
           ))}
         </select>
         <div className="md:col-span-2 xl:col-span-5">
-          <FormActions editing={Boolean(editingId)} busy={busy} onCancel={reset} />
+          <FormActions
+            editing={Boolean(editingId)}
+            busy={busy}
+            onCancel={reset}
+          />
         </div>
       </form>
 
@@ -440,18 +443,28 @@ function UsersSection({
               users.map((user) => (
                 <tr key={user.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-semibold">{user.name}</td>
-                  <td className="px-4 py-3" dir="ltr">{user.email}</td>
-                  <td className="px-4 py-3">
-                    {user.role === 'ADMIN' ? 'مدير' : 'مدخل درجات'}
+                  <td className="px-4 py-3" dir="ltr">
+                    {user.email}
                   </td>
-                  <td className="px-4 py-3">{user.committee?.name ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {user.role === "ADMIN" ? "مدير" : "مدخل درجات"}
+                  </td>
+                  <td className="px-4 py-3">{user.committee?.name ?? "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-center gap-2">
-                      <button className="icon-button" onClick={() => edit(user)} title="تعديل">
+                      <button
+                        className="icon-button"
+                        onClick={() => edit(user)}
+                        title="تعديل"
+                      >
                         <Pencil size={16} />
                       </button>
                       {!isProtectedAdmin(user) && (
-                        <button className="icon-button text-red-600" onClick={() => void remove(user)} title="حذف">
+                        <button
+                          className="icon-button text-red-600"
+                          onClick={() => void remove(user)}
+                          title="حذف"
+                        >
                           <Trash2 size={16} />
                         </button>
                       )}
@@ -475,14 +488,13 @@ function CommitteesSection({
   onRefresh: () => Promise<void>;
 }) {
   const emptyForm: CommitteeInput = {
-    name: '',
+    name: "",
     weightPercentage: 0,
-    isLocked: false,
   };
   const [form, setForm] = useState<CommitteeInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const reset = () => {
     setForm(emptyForm);
@@ -492,7 +504,7 @@ function CommitteesSection({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+    setError("");
     try {
       if (editingId) await committeesApi.update(editingId, form);
       else await committeesApi.create(form);
@@ -520,7 +532,7 @@ function CommitteesSection({
       {error && <StatusMessage message={error} />}
       <form
         onSubmit={submit}
-        className="mb-6 grid gap-4 border border-slate-200 bg-white p-4 shadow-panel md:grid-cols-[minmax(200px,1fr)_180px_180px_auto]"
+        className="mb-6 grid gap-4 border border-slate-200 bg-white p-4 shadow-panel md:grid-cols-[minmax(200px,1fr)_180px_auto]"
         style={{ borderRadius: 8 }}
       >
         <input
@@ -543,17 +555,11 @@ function CommitteesSection({
           }
           required
         />
-        <label className="flex min-h-10 items-center gap-3 border border-slate-300 bg-white px-3 text-sm">
-          <input
-            type="checkbox"
-            checked={form.isLocked}
-            onChange={(event) =>
-              setForm({ ...form, isLocked: event.target.checked })
-            }
-          />
-          اللجنة مقفلة
-        </label>
-        <FormActions editing={Boolean(editingId)} busy={busy} onCancel={reset} />
+        <FormActions
+          editing={Boolean(editingId)}
+          busy={busy}
+          onCancel={reset}
+        />
       </form>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -563,16 +569,13 @@ function CommitteesSection({
             className="border border-slate-200 bg-white p-4"
             style={{ borderRadius: 8 }}
           >
-            <div className="flex items-start justify-between gap-4">
+            <div>
               <div>
                 <h3 className="font-bold text-primary">{committee.name}</h3>
                 <p className="mt-1 text-sm text-slate-500">
                   الوزن: {Number(committee.weightPercentage).toFixed(2)}%
                 </p>
               </div>
-              <span className={`px-2 py-1 text-xs font-semibold ${committee.isLocked ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                {committee.isLocked ? 'مقفلة' : 'مفتوحة'}
-              </span>
             </div>
             <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
               <button
@@ -583,13 +586,16 @@ function CommitteesSection({
                   setForm({
                     name: committee.name,
                     weightPercentage: Number(committee.weightPercentage),
-                    isLocked: committee.isLocked,
                   });
                 }}
               >
                 <Pencil size={16} />
               </button>
-              <button className="icon-button text-red-600" title="حذف" onClick={() => void remove(committee)}>
+              <button
+                className="icon-button text-red-600"
+                title="حذف"
+                onClick={() => void remove(committee)}
+              >
                 <Trash2 size={16} />
               </button>
             </div>
@@ -602,11 +608,11 @@ function CommitteesSection({
 
 function FamiliesSection() {
   const [families, setFamilies] = useState<Family[]>([]);
-  const [form, setForm] = useState({ name: '', stageId: '' });
+  const [form, setForm] = useState({ name: "", stageId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const stages = useMemo(
     () =>
@@ -620,13 +626,13 @@ function FamiliesSection() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const data = await familiesApi.list();
       setFamilies(data);
       setForm((current) => ({
         ...current,
-        stageId: current.stageId || data[0]?.stageId || '',
+        stageId: current.stageId || data[0]?.stageId || "",
       }));
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -642,15 +648,15 @@ function FamiliesSection() {
   const reset = () => {
     setEditingId(null);
     setForm({
-      name: '',
-      stageId: stages[0]?.id ?? '',
+      name: "",
+      stageId: stages[0]?.id ?? "",
     });
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+    setError("");
     try {
       if (editingId) {
         await familiesApi.update(editingId, form);
@@ -770,10 +776,10 @@ function FamiliesSection() {
 
 function CriteriaSection({ committees }: { committees: Committee[] }) {
   const emptyForm: CriterionInput = {
-    title: '',
-    description: '',
+    title: "",
+    description: "",
     maxScore: 1,
-    committeeId: '',
+    committeeId: "",
     displayOrder: 0,
   };
   const [criteria, setCriteria] = useState<Criterion[]>([]);
@@ -781,7 +787,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const grouped = useMemo(
     () =>
@@ -796,7 +802,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       setCriteria(await criteriaApi.list());
     } catch (requestError) {
@@ -818,7 +824,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+    setError("");
     try {
       if (editingId) await criteriaApi.update(editingId, form);
       else await criteriaApi.create(form);
@@ -896,13 +902,17 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
         <input
           className="field"
           placeholder="الوصف (اختياري)"
-          value={form.description ?? ''}
+          value={form.description ?? ""}
           onChange={(event) =>
             setForm({ ...form, description: event.target.value })
           }
         />
         <div className="md:col-span-2 xl:col-span-5">
-          <FormActions editing={Boolean(editingId)} busy={busy} onCancel={reset} />
+          <FormActions
+            editing={Boolean(editingId)}
+            busy={busy}
+            onCancel={reset}
+          />
         </div>
       </form>
 
@@ -911,7 +921,10 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
       ) : (
         <div className="space-y-5">
           {grouped.map(({ committee, criteria: committeeCriteria }) => (
-            <section key={committee.id} className="border border-slate-200 bg-white">
+            <section
+              key={committee.id}
+              className="border border-slate-200 bg-white"
+            >
               <div className="flex items-center justify-between bg-primary px-4 py-3 text-white">
                 <h3 className="font-bold">{committee.name}</h3>
                 <span className="text-xs text-white/70">
@@ -932,7 +945,9 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
                       <div className="font-semibold">{criterion.title}</div>
                       <div className="mt-1 text-xs text-slate-500">
                         الدرجة القصوى: {Number(criterion.maxScore).toFixed(2)}
-                        {criterion.description ? ` · ${criterion.description}` : ''}
+                        {criterion.description
+                          ? ` · ${criterion.description}`
+                          : ""}
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -943,7 +958,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
                           setEditingId(criterion.id);
                           setForm({
                             title: criterion.title,
-                            description: criterion.description ?? '',
+                            description: criterion.description ?? "",
                             maxScore: Number(criterion.maxScore),
                             committeeId: criterion.committeeId,
                             displayOrder: criterion.displayOrder,
@@ -952,7 +967,11 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
                       >
                         <Pencil size={16} />
                       </button>
-                      <button className="icon-button text-red-600" title="حذف" onClick={() => void remove(criterion)}>
+                      <button
+                        className="icon-button text-red-600"
+                        title="حذف"
+                        onClick={() => void remove(criterion)}
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -967,13 +986,7 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
   );
 }
 
-function TableMessage({
-  colSpan,
-  text,
-}: {
-  colSpan: number;
-  text: string;
-}) {
+function TableMessage({ colSpan, text }: { colSpan: number; text: string }) {
   return (
     <tr>
       <td colSpan={colSpan} className="px-4 py-10 text-center text-slate-500">
@@ -985,8 +998,8 @@ function TableMessage({
 
 function isProtectedAdmin(user: User) {
   return (
-    user.role === 'ADMIN' &&
-    ['ab443442@gmail.com', 'admin@example.com'].includes(
+    user.role === "ADMIN" &&
+    ["ab443442@gmail.com", "admin@example.com"].includes(
       user.email.toLowerCase(),
     )
   );

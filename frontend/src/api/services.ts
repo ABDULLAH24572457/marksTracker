@@ -45,7 +45,6 @@ export const usersApi = {
 export type CommitteeInput = {
   name: string;
   weightPercentage: number;
-  isLocked?: boolean;
 };
 
 export const committeesApi = {

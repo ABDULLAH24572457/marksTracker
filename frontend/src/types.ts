@@ -4,7 +4,6 @@ export type Committee = {
   id: string;
   name: string;
   weightPercentage: string | number;
-  isLocked: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -58,7 +57,7 @@ export type Score = {
   };
   family: Family;
   criterion: Criterion & {
-    committee: Pick<Committee, 'id' | 'name' | 'isLocked'>;
+    committee: Pick<Committee, 'id' | 'name'>;
   };
 };
 

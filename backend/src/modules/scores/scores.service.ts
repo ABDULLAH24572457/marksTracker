@@ -43,7 +43,6 @@ const scoreInclude = {
         select: {
           id: true,
           name: true,
-          isLocked: true,
         },
       },
     },
@@ -68,9 +67,6 @@ type CriterionAccess = {
   id: string;
   committeeId: string;
   maxScore: Prisma.Decimal;
-  committee: {
-    isLocked: boolean;
-  };
 };
 
 @Injectable()
@@ -81,7 +77,6 @@ export class ScoresService {
     const criterion = await this.getCriterion(createScoreDto.criterionId);
 
     this.assertCommitteeAccess(criterion, user);
-    this.assertCommitteeIsEditable(criterion, user);
     this.assertScoreWithinMaximum(createScoreDto.score, criterion.maxScore);
     await this.ensureFamilyExists(createScoreDto.familyId);
     await this.ensureScoringCycleExists(createScoreDto.scoringCycleId);
@@ -174,7 +169,6 @@ export class ScoresService {
             select: {
               id: true,
               name: true,
-              isLocked: true,
             },
           },
         },
@@ -283,7 +277,6 @@ export class ScoresService {
     const criterion = await this.getCriterion(criterionId);
 
     this.assertCommitteeAccess(criterion, user);
-    this.assertCommitteeIsEditable(criterion, user);
     this.assertScoreWithinMaximum(score, criterion.maxScore);
     await this.ensureFamilyExists(familyId);
     await this.ensureScoringCycleExists(scoringCycleId);
@@ -313,11 +306,6 @@ export class ScoresService {
         criterion: {
           select: {
             committeeId: true,
-            committee: {
-              select: {
-                isLocked: true,
-              },
-            },
           },
         },
       },
@@ -328,7 +316,6 @@ export class ScoresService {
     }
 
     this.assertCommitteeIdAccess(existingScore.criterion.committeeId, user);
-    this.assertCommitteeIsEditable(existingScore.criterion, user);
 
     try {
       return await this.prisma.score.delete({
@@ -347,11 +334,6 @@ export class ScoresService {
         id: true,
         committeeId: true,
         maxScore: true,
-        committee: {
-          select: {
-            isLocked: true,
-          },
-        },
       },
     });
 
@@ -416,18 +398,6 @@ export class ScoresService {
       throw new ForbiddenException(
         'You cannot access scores from another committee.',
       );
-    }
-  }
-
-  private assertCommitteeIsEditable(
-    criterion: { committee: { isLocked: boolean } },
-    user: AuthenticatedUser,
-  ) {
-    if (
-      user.role === UserRole.DATA_ENTRY &&
-      criterion.committee.isLocked
-    ) {
-      throw new ForbiddenException('Your assigned committee is locked.');
     }
   }
 

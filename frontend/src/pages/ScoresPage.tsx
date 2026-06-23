@@ -336,7 +336,9 @@ function ScoreInput({
   const maxScore = Math.max(0, Math.floor(Number(criterion.maxScore)));
   const options = Array.from({ length: maxScore + 1 }, (_, index) => index);
   const optionValues = ['', ...options.map(String)];
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const desktopInputRef = useRef<HTMLInputElement>(null);
+  const mobileButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -362,7 +364,7 @@ function ScoreInput({
       const target = event.target as Node;
 
       if (
-        !buttonRef.current?.contains(target) &&
+        !triggerRef.current?.contains(target) &&
         !menuRef.current?.contains(target)
       ) {
         setOpen(false);
@@ -401,11 +403,11 @@ function ScoreInput({
   }, [open, activeIndex]);
 
   const openMenu = (preferredIndex?: number) => {
-    if (saving || !buttonRef.current) {
+    if (saving || !triggerRef.current) {
       return;
     }
 
-    const rect = buttonRef.current.getBoundingClientRect();
+    const rect = triggerRef.current.getBoundingClientRect();
     const menuHeight = Math.min(optionValues.length * 32 + 8, 200);
     const spaceBelow = window.innerHeight - rect.bottom;
     const openAbove = spaceBelow < menuHeight && rect.top > spaceBelow;
@@ -471,20 +473,92 @@ function ScoreInput({
       setOpen(false);
       if (event.key === 'Escape') {
         event.preventDefault();
-        buttonRef.current?.focus();
+        if (window.matchMedia('(min-width: 768px)').matches) {
+          desktopInputRef.current?.focus();
+        } else {
+          mobileButtonRef.current?.focus();
+        }
       }
     }
   };
 
+  const commitTypedValue = () => {
+    if (value === '') {
+      void onSave(family, criterion, '');
+      return;
+    }
+
+    const normalized = normalizeScore(value, maxScore);
+
+    if (normalized === null) {
+      setValue(score ? String(normalizeScore(score.score, maxScore) ?? '') : '');
+      return;
+    }
+
+    const normalizedValue = String(normalized);
+    setValue(normalizedValue);
+    void onSave(family, criterion, normalizedValue);
+  };
+
   return (
-    <div className="relative mx-auto w-[70px]">
+    <div ref={triggerRef} className="relative mx-auto w-[70px]">
+      <div className="relative hidden md:block">
+        <input
+          ref={desktopInputRef}
+          type="text"
+          inputMode="numeric"
+          className={`h-[34px] w-[70px] border bg-white px-5 text-center text-sm font-bold text-primary outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/25 disabled:cursor-wait disabled:opacity-60 ${
+            saved
+              ? 'border-emerald-400 bg-emerald-50'
+              : 'border-slate-300 hover:border-primary/40'
+          }`}
+          style={{ borderRadius: 12 }}
+          value={value}
+          disabled={saving}
+          placeholder="—"
+          aria-label={`درجة ${family.name} في ${criterion.title}`}
+          onChange={(event) => setValue(event.target.value)}
+          onBlur={commitTypedValue}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              event.currentTarget.blur();
+            } else if (event.key === 'Escape') {
+              setValue(
+                score
+                  ? String(normalizeScore(score.score, maxScore) ?? '')
+                  : '',
+              );
+              event.currentTarget.blur();
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              openMenu();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="absolute left-0 top-0 flex h-[34px] w-6 items-center justify-center text-slate-500 hover:text-primary"
+          aria-label={`فتح قائمة درجات ${criterion.title}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={toggleMenu}
+        >
+          <ChevronDown
+            size={14}
+            className={`transition ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+      </div>
+
       <button
-        ref={buttonRef}
+        ref={mobileButtonRef}
         type="button"
-        className={`relative h-[34px] w-[70px] border bg-white px-5 text-center text-sm font-bold text-primary outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/25 disabled:cursor-wait disabled:opacity-60 ${
+        className={`relative h-11 w-[70px] border bg-white px-5 text-center text-sm font-bold text-primary outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/25 disabled:cursor-wait disabled:opacity-60 md:hidden ${
           saved
             ? 'border-emerald-400 bg-emerald-50'
-            : 'border-slate-300 hover:border-primary/40'
+            : 'border-slate-300 active:bg-slate-50'
         }`}
         style={{ borderRadius: 12 }}
         disabled={saving}
@@ -497,7 +571,7 @@ function ScoreInput({
         {value || '—'}
         <ChevronDown
           size={14}
-          className={`pointer-events-none absolute left-1.5 top-[9px] text-slate-500 transition ${
+          className={`pointer-events-none absolute left-1.5 top-[15px] text-slate-500 transition ${
             open ? 'rotate-180' : ''
           }`}
         />
@@ -505,7 +579,7 @@ function ScoreInput({
       {saved && (
         <Check
           size={12}
-          className="pointer-events-none absolute right-1.5 top-[11px] text-emerald-600"
+          className="pointer-events-none absolute right-1.5 top-[11px] text-emerald-600 max-md:top-4"
         />
       )}
 
@@ -589,6 +663,7 @@ function ScoreOption({
           : 'text-slate-700 hover:bg-slate-100'
       }`}
       onMouseMove={() => onActivate(index)}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={() => onSelect(value)}
     >
       {label}
