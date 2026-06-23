@@ -30,6 +30,15 @@ export class ReportsService {
   async generateFinalResultsPdf(): Promise<Buffer> {
     const { scoringCycle, rankings } =
       await this.rankingsService.getCurrentResults();
+    const committees = await this.prisma.committee.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
     const { default: puppeteer } = await import('puppeteer-core');
     const browser = await puppeteer.launch({
       executablePath: this.getBrowserExecutablePath(),
@@ -40,7 +49,11 @@ export class ReportsService {
     try {
       const page = await browser.newPage();
       await page.setContent(
-        this.buildDetailedResultsHtml(scoringCycle.name, rankings),
+        this.buildDetailedResultsHtml(
+          scoringCycle.name,
+          rankings,
+          committees,
+        ),
         { waitUntil: 'load' },
       );
       await page.evaluate(() => document.fonts.ready);
@@ -268,6 +281,7 @@ export class ReportsService {
   private buildDetailedResultsHtml(
     scoringCycleName: string,
     rankings: FamilyRanking[],
+    committees: Array<{ id: string; name: string }>,
   ) {
     const fontBase64 = readFileSync(ARABIC_FONT_PATH).toString('base64');
     const generatedAt = new Intl.DateTimeFormat('ar-SA', {
@@ -289,7 +303,9 @@ export class ReportsService {
     );
     const content =
       stages.length > 0
-        ? stages.map((stage) => this.renderStage(stage)).join('')
+        ? stages
+            .map((stage) => this.renderStage(stage, committees))
+            .join('')
         : '<div class="empty">لا توجد نتائج متاحة.</div>';
 
     return `<!doctype html>
@@ -305,7 +321,7 @@ export class ReportsService {
     }
     @page {
       size: A4 landscape;
-      margin: 12mm;
+      margin: 7mm;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -315,102 +331,95 @@ export class ReportsService {
       color: #111827;
       background: #ffffff;
       font-family: "Noto Sans Arabic", Arial, sans-serif;
-      font-size: 12px;
-      line-height: 1.6;
+      font-size: 10px;
+      line-height: 1.4;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
     .report-header {
       text-align: center;
-      margin-bottom: 26px;
+      margin-bottom: 18px;
       border-bottom: 2px solid #18174A;
-      padding-bottom: 16px;
+      padding-bottom: 12px;
     }
     .report-title {
       margin: 0;
       color: #18174A;
-      font-size: 24px;
+      font-size: 23px;
       font-weight: 700;
     }
     .report-meta {
-      margin-top: 7px;
+      margin-top: 4px;
       color: #475569;
-      font-size: 13px;
-    }
-    .notice {
-      margin: 12px auto 0;
-      max-width: 760px;
-      padding: 8px 12px;
-      color: #475569;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      font-size: 11px;
     }
     .stage-section {
-      margin-top: 26px;
+      margin-top: 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .stage-title {
-      margin: 0 0 12px;
-      padding: 10px 14px;
+      margin: 0 0 8px;
+      padding: 7px 11px;
       color: #ffffff;
       background: #18174A;
-      font-size: 20px;
+      font-size: 17px;
       font-weight: 700;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 12px;
+      font-size: 9px;
     }
     thead { display: table-header-group; }
     tr { break-inside: avoid; page-break-inside: avoid; }
     th {
-      padding: 10px 8px;
+      padding: 6px 3px;
       color: #ffffff;
       background: #18174A;
-      border: 1px solid #d8deea;
+      border: 1px solid #aeb8c8;
       font-weight: 700;
       text-align: center;
+      line-height: 1.35;
     }
     td {
-      padding: 10px 8px;
-      border: 1px solid #d8deea;
+      padding: 7px 3px;
+      border: 1px solid #cbd2dc;
       text-align: center;
       vertical-align: middle;
     }
     tbody tr:nth-child(even) td { background: #f8fafc; }
-    .family-name { text-align: right; font-weight: 700; }
-    .rank-column { width: 9%; }
-    .family-column { width: 27%; }
-    .week-column { width: 14%; }
-    .total-column { width: 22%; }
-    .details-heading {
-      margin: 22px 0 10px;
+    tbody tr.first-place td { background: #fff4cc; }
+    .family-name {
+      text-align: right;
+      font-weight: 700;
+      font-size: 10px;
+      white-space: normal;
+    }
+    .rank-column { width: 4.5%; }
+    .family-column { width: 12%; }
+    .percentage-column { width: 6%; }
+    .committee-column { width: auto; }
+    .total-column { width: 7%; }
+    .committee-group {
+      background: #315170;
+      font-size: 9px;
+    }
+    .committee-group.alt { background: #3e6670; }
+    .sub-header {
+      background: #546477;
+      font-size: 8px;
+    }
+    .weighted {
       color: #18174A;
-      font-size: 18px;
       font-weight: 700;
     }
-    .family-details {
-      margin: 0 0 16px;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-    .family-details-title {
-      margin: 0;
-      padding: 8px 12px;
+    .final-total {
       color: #18174A;
-      background: #eef8fc;
-      border: 1px solid #d8deea;
-      border-bottom: 0;
-      font-size: 14px;
+      font-size: 10px;
       font-weight: 700;
     }
-    .details-table th {
-      padding: 8px;
-      background: #334155;
-    }
-    .details-table td { padding: 8px; }
-    .committee-name { text-align: right; font-weight: 600; }
     .empty {
       padding: 60px 20px;
       text-align: center;
@@ -421,38 +430,67 @@ export class ReportsService {
 </head>
 <body>
   <header class="report-header">
-    <h1 class="report-title">تقرير النتائج التفصيلي</h1>
-    <div class="report-meta">دورة التقييم: ${this.escapeHtml(scoringCycleName)}</div>
-    <div class="report-meta">تاريخ الإنشاء: ${this.escapeHtml(generatedAt)}</div>
-    <div class="notice">بيانات الأسابيع غير متاحة في نموذج البيانات الحالي، لذلك تظهر بشرطة بدل إنشاء نتائج غير موجودة.</div>
+    <h1 class="report-title">النتائج العامة للتقييم</h1>
+    <div class="report-meta">التقييم الخاص بالراية</div>
+    <div class="report-meta">${this.escapeHtml(scoringCycleName)} · ${this.escapeHtml(generatedAt)}</div>
   </header>
   ${content}
 </body>
 </html>`;
   }
 
-  private renderStage(rankings: FamilyRanking[]) {
+  private renderStage(
+    rankings: FamilyRanking[],
+    committees: Array<{ id: string; name: string }>,
+  ) {
     const stageTitle = this.getStageTitle(rankings[0].stageName);
+    const committeeHeaders = committees
+      .map(
+        (committee, index) => `
+          <th class="committee-group ${index % 2 === 1 ? 'alt' : ''}" colspan="2">
+            ${this.escapeHtml(committee.name)}
+          </th>`,
+      )
+      .join('');
+    const committeeSubHeaders = committees
+      .map(
+        () => `
+          <th class="sub-header">الدرجة</th>
+          <th class="sub-header">وزنها %</th>`,
+      )
+      .join('');
     const rankingRows = rankings
       .sort(
         (first, second) =>
           first.rank - second.rank ||
           first.familyName.localeCompare(second.familyName),
       )
-      .map(
-        (ranking) => `
-          <tr>
+      .map((ranking) => {
+        const breakdownByCommittee = new Map(
+          ranking.committeeBreakdown.map((item) => [
+            item.committeeId,
+            item,
+          ]),
+        );
+        const committeeCells = committees
+          .map((committee) => {
+            const breakdown = breakdownByCommittee.get(committee.id);
+
+            return `
+              <td>${this.formatScore(breakdown?.earnedScore ?? 0)}</td>
+              <td class="weighted">${this.formatScore(breakdown?.weightedScore ?? 0)}</td>`;
+          })
+          .join('');
+
+        return `
+          <tr class="${ranking.rank === 1 ? 'first-place' : ''}">
             <td>${ranking.rank}</td>
             <td class="family-name">${this.escapeHtml(ranking.familyName)}</td>
-            <td>—</td>
-            <td>—</td>
-            <td>—</td>
-            <td><strong>${this.formatScore(ranking.totalScore)}</strong></td>
-          </tr>`,
-      )
-      .join('');
-    const details = rankings
-      .map((ranking) => this.renderFamilyDetails(ranking))
+            <td>${this.formatScore(ranking.totalScore)}%</td>
+            ${committeeCells}
+            <td class="final-total">${this.formatScore(ranking.totalScore)}</td>
+          </tr>`;
+      })
       .join('');
 
     return `
@@ -461,54 +499,17 @@ export class ReportsService {
         <table>
           <thead>
             <tr>
-              <th class="rank-column">الترتيب</th>
-              <th class="family-column">الأسرة</th>
-              <th class="week-column">الأسبوع الأول</th>
-              <th class="week-column">الأسبوع الثاني</th>
-              <th class="week-column">الأسبوع الثالث</th>
-              <th class="total-column">المجموع النهائي</th>
+              <th class="rank-column" rowspan="2">الترتيب</th>
+              <th class="family-column" rowspan="2">الأسرة</th>
+              <th class="percentage-column" rowspan="2">النسبة</th>
+              ${committeeHeaders}
+              <th class="total-column" rowspan="2">المجموع النهائي</th>
             </tr>
+            <tr>${committeeSubHeaders}</tr>
           </thead>
           <tbody>${rankingRows}</tbody>
         </table>
-        <h3 class="details-heading">تفاصيل اللجان</h3>
-        ${details}
       </section>`;
-  }
-
-  private renderFamilyDetails(ranking: FamilyRanking) {
-    const rows =
-      ranking.committeeBreakdown.length > 0
-        ? ranking.committeeBreakdown
-            .map(
-              (committee) => `
-                <tr>
-                  <td class="committee-name">${this.escapeHtml(committee.committeeName)}</td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td>${this.formatScore(committee.weightedScore)}</td>
-                </tr>`,
-            )
-            .join('')
-        : '<tr><td colspan="5">لا توجد درجات مسجلة</td></tr>';
-
-    return `
-      <div class="family-details">
-        <h4 class="family-details-title">${this.escapeHtml(ranking.familyName)} - الترتيب ${ranking.rank}</h4>
-        <table class="details-table">
-          <thead>
-            <tr>
-              <th>اللجنة</th>
-              <th>الأسبوع الأول</th>
-              <th>الأسبوع الثاني</th>
-              <th>الأسبوع الثالث</th>
-              <th>المجموع</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
   }
 
   private getBrowserExecutablePath() {

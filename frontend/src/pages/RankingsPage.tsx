@@ -92,7 +92,7 @@ export function RankingsPage() {
                 <Download size={17} />
                 {exporting
                   ? 'جارٍ التصدير...'
-                  : 'تصدير PDF'}
+                  : 'تصدير النتائج PDF'}
               </button>
             )}
             <button className="btn-secondary" onClick={() => void load()}>
