@@ -1,17 +1,19 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import PDFDocument from 'pdfkit';
+import { existsSync, readFileSync } from 'node:fs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import {
-  CommitteeBreakdown,
   FamilyRanking,
   RankingsService,
 } from '../rankings/rankings.service';
 
-const ARABIC_PATTERN = /[\u0600-\u06ff]/;
 const ARABIC_FONT_PATH = require.resolve(
-  '@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff',
+  '@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff2',
 );
 
 @Injectable()
@@ -28,41 +30,33 @@ export class ReportsService {
   async generateFinalResultsPdf(): Promise<Buffer> {
     const { scoringCycle, rankings } =
       await this.rankingsService.getCurrentResults();
-    const document = new PDFDocument({
-      size: 'A4',
-      layout: 'landscape',
-      margin: 36,
-      bufferPages: true,
-      info: {
-        Title: 'Final Results',
-        Subject: `Final rankings for ${scoringCycle.name}`,
-        Creator: 'Marks Tracker',
-      },
-    });
-    const chunks: Buffer[] = [];
-    const completed = new Promise<Buffer>((resolve, reject) => {
-      document.on('data', (chunk: Buffer) => chunks.push(chunk));
-      document.on('end', () => resolve(Buffer.concat(chunks)));
-      document.on('error', reject);
+    const { default: puppeteer } = await import('puppeteer-core');
+    const browser = await puppeteer.launch({
+      executablePath: this.getBrowserExecutablePath(),
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
-    document.registerFont('Arabic', ARABIC_FONT_PATH);
-    this.drawReportHeader(document, scoringCycle.name);
+    try {
+      const page = await browser.newPage();
+      await page.setContent(
+        this.buildDetailedResultsHtml(scoringCycle.name, rankings),
+        { waitUntil: 'load' },
+      );
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
 
-    if (rankings.length === 0) {
-      document
-        .moveDown(2)
-        .font('Helvetica')
-        .fontSize(12)
-        .text('No families are available for ranking.');
-    } else {
-      this.drawRankingsTable(document, rankings);
+      const pdf = await page.pdf({
+        format: 'A4',
+        landscape: true,
+        printBackground: true,
+        preferCSSPageSize: true,
+      });
+
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
     }
-
-    this.drawPageFooters(document);
-    document.end();
-
-    return completed;
   }
 
   async createFinalResultsSnapshot(user: AuthenticatedUser) {
@@ -152,7 +146,7 @@ export class ReportsService {
                   stageId: stage.id,
                   stageName: stage.name,
                   finalScore: ranking.totalScore,
-                  overallRank: ranking.rank,
+                  overallRank: ranking.overallRank,
                   stageRank: stageRanks.get(ranking.familyId) ?? 0,
                   breakdown:
                     ranking.committeeBreakdown as unknown as Prisma.InputJsonValue,
@@ -271,247 +265,310 @@ export class ReportsService {
     return stageRanks;
   }
 
-  private drawReportHeader(
-    document: PDFKit.PDFDocument,
+  private buildDetailedResultsHtml(
     scoringCycleName: string,
-  ) {
-    document
-      .font('Helvetica-Bold')
-      .fontSize(20)
-      .fillColor('#111827')
-      .text('Final Competition Results', {
-        align: 'center',
-      })
-      .moveDown(0.35)
-      .font('Helvetica')
-      .fontSize(10)
-      .fillColor('#4b5563')
-      .text('Scoring cycle', {
-        align: 'center',
-      })
-      .font(ARABIC_PATTERN.test(scoringCycleName) ? 'Arabic' : 'Helvetica')
-      .text(scoringCycleName, {
-        align: 'center',
-      })
-      .font('Helvetica')
-      .text(`Generated: ${new Date().toISOString()}`, {
-        align: 'center',
-      })
-      .moveDown(1.25);
-  }
-
-  private drawRankingsTable(
-    document: PDFKit.PDFDocument,
     rankings: FamilyRanking[],
   ) {
-    const left = document.page.margins.left;
-    const tableWidth =
-      document.page.width -
-      document.page.margins.left -
-      document.page.margins.right;
-    const columns = {
-      rank: 48,
-      family: 180,
-      total: 82,
-      breakdown: tableWidth - 310,
-    };
-    let y = document.y;
+    const fontBase64 = readFileSync(ARABIC_FONT_PATH).toString('base64');
+    const generatedAt = new Intl.DateTimeFormat('ar-SA', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    }).format(new Date());
+    const stageGroups = new Map<string, FamilyRanking[]>();
 
-    const drawHeader = () => {
-      document
-        .rect(left, y, tableWidth, 26)
-        .fill('#1f2937');
-      document
-        .fillColor('#ffffff')
-        .font('Helvetica-Bold')
-        .fontSize(9);
-      this.drawCell(document, 'Rank', left, y, columns.rank, 26);
-      this.drawCell(
-        document,
-        'Family',
-        left + columns.rank,
-        y,
-        columns.family,
-        26,
-      );
-      this.drawCell(
-        document,
-        'Total',
-        left + columns.rank + columns.family,
-        y,
-        columns.total,
-        26,
-      );
-      this.drawCell(
-        document,
-        'Committee breakdown',
-        left + columns.rank + columns.family + columns.total,
-        y,
-        columns.breakdown,
-        26,
-      );
-      y += 26;
-    };
-
-    drawHeader();
-
-    for (const [index, ranking] of rankings.entries()) {
-      const rowHeight = Math.max(
-        30,
-        ranking.committeeBreakdown.length * 14 + 12,
-      );
-      const pageBottom =
-        document.page.height - document.page.margins.bottom - 22;
-
-      if (y + rowHeight > pageBottom) {
-        document.addPage();
-        y = document.page.margins.top;
-        drawHeader();
-      }
-
-      document
-        .rect(left, y, tableWidth, rowHeight)
-        .fill(index % 2 === 0 ? '#f9fafb' : '#ffffff')
-        .strokeColor('#d1d5db')
-        .lineWidth(0.5)
-        .rect(left, y, tableWidth, rowHeight)
-        .stroke();
-
-      document.fillColor('#111827').font('Helvetica').fontSize(9);
-      this.drawCell(
-        document,
-        ranking.rank.toString(),
-        left,
-        y,
-        columns.rank,
-        rowHeight,
-      );
-      this.drawNameCell(
-        document,
-        ranking.familyName,
-        left + columns.rank,
-        y,
-        columns.family,
-        rowHeight,
-      );
-      this.drawCell(
-        document,
-        ranking.totalScore.toFixed(4),
-        left + columns.rank + columns.family,
-        y,
-        columns.total,
-        rowHeight,
-      );
-      this.drawCommitteeBreakdown(
-        document,
-        ranking.committeeBreakdown,
-        left + columns.rank + columns.family + columns.total,
-        y,
-        columns.breakdown,
-      );
-
-      y += rowHeight;
-    }
-  }
-
-  private drawCell(
-    document: PDFKit.PDFDocument,
-    text: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) {
-    document.text(text, x + 6, y + 8, {
-      width: width - 12,
-      height: height - 12,
-      align: 'center',
-      ellipsis: true,
-    });
-  }
-
-  private drawNameCell(
-    document: PDFKit.PDFDocument,
-    name: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) {
-    const isArabic = ARABIC_PATTERN.test(name);
-
-    document
-      .font(isArabic ? 'Arabic' : 'Helvetica')
-      .fontSize(9)
-      .text(name, x + 6, y + 7, {
-        width: width - 12,
-        height: height - 12,
-        align: isArabic ? 'right' : 'left',
-        ellipsis: true,
-      });
-  }
-
-  private drawCommitteeBreakdown(
-    document: PDFKit.PDFDocument,
-    breakdown: CommitteeBreakdown[],
-    x: number,
-    y: number,
-    width: number,
-  ) {
-    if (breakdown.length === 0) {
-      document
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor('#6b7280')
-        .text('No scores entered', x + 6, y + 9, {
-          width: width - 12,
-        });
-      return;
+    for (const ranking of rankings) {
+      const stageRankings = stageGroups.get(ranking.stageId) ?? [];
+      stageRankings.push(ranking);
+      stageGroups.set(ranking.stageId, stageRankings);
     }
 
-    breakdown.forEach((committee, index) => {
-      const isArabic = ARABIC_PATTERN.test(committee.committeeName);
-      const line =
-        `${committee.committeeName} | ` +
-        `${committee.earnedScore.toFixed(2)}/` +
-        `${committee.maxPossibleScore.toFixed(2)} | ` +
-        `${committee.weightPercentage.toFixed(2)}% | ` +
-        `${committee.weightedScore.toFixed(4)}`;
+    const stages = Array.from(stageGroups.values()).sort(
+      (first, second) =>
+        this.getStageOrder(first[0].stageName) -
+        this.getStageOrder(second[0].stageName),
+    );
+    const content =
+      stages.length > 0
+        ? stages.map((stage) => this.renderStage(stage)).join('')
+        : '<div class="empty">لا توجد نتائج متاحة.</div>';
 
-      document
-        .font(isArabic ? 'Arabic' : 'Helvetica')
-        .fontSize(7.5)
-        .fillColor('#374151')
-        .text(line, x + 6, y + 7 + index * 14, {
-          width: width - 12,
-          height: 13,
-          align: isArabic ? 'right' : 'left',
-          ellipsis: true,
-        });
-    });
+    return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @font-face {
+      font-family: "Noto Sans Arabic";
+      src: url(data:font/woff2;base64,${fontBase64}) format("woff2");
+      font-weight: 400;
+      font-style: normal;
+    }
+    @page {
+      size: A4 landscape;
+      margin: 12mm;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      direction: rtl;
+      color: #111827;
+      background: #ffffff;
+      font-family: "Noto Sans Arabic", Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.6;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .report-header {
+      text-align: center;
+      margin-bottom: 26px;
+      border-bottom: 2px solid #18174A;
+      padding-bottom: 16px;
+    }
+    .report-title {
+      margin: 0;
+      color: #18174A;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .report-meta {
+      margin-top: 7px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .notice {
+      margin: 12px auto 0;
+      max-width: 760px;
+      padding: 8px 12px;
+      color: #475569;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .stage-section {
+      margin-top: 26px;
+    }
+    .stage-title {
+      margin: 0 0 12px;
+      padding: 10px 14px;
+      color: #ffffff;
+      background: #18174A;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    th {
+      padding: 10px 8px;
+      color: #ffffff;
+      background: #18174A;
+      border: 1px solid #d8deea;
+      font-weight: 700;
+      text-align: center;
+    }
+    td {
+      padding: 10px 8px;
+      border: 1px solid #d8deea;
+      text-align: center;
+      vertical-align: middle;
+    }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    .family-name { text-align: right; font-weight: 700; }
+    .rank-column { width: 9%; }
+    .family-column { width: 27%; }
+    .week-column { width: 14%; }
+    .total-column { width: 22%; }
+    .details-heading {
+      margin: 22px 0 10px;
+      color: #18174A;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .family-details {
+      margin: 0 0 16px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .family-details-title {
+      margin: 0;
+      padding: 8px 12px;
+      color: #18174A;
+      background: #eef8fc;
+      border: 1px solid #d8deea;
+      border-bottom: 0;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .details-table th {
+      padding: 8px;
+      background: #334155;
+    }
+    .details-table td { padding: 8px; }
+    .committee-name { text-align: right; font-weight: 600; }
+    .empty {
+      padding: 60px 20px;
+      text-align: center;
+      color: #64748b;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header class="report-header">
+    <h1 class="report-title">تقرير النتائج التفصيلي</h1>
+    <div class="report-meta">دورة التقييم: ${this.escapeHtml(scoringCycleName)}</div>
+    <div class="report-meta">تاريخ الإنشاء: ${this.escapeHtml(generatedAt)}</div>
+    <div class="notice">بيانات الأسابيع غير متاحة في نموذج البيانات الحالي، لذلك تظهر بشرطة بدل إنشاء نتائج غير موجودة.</div>
+  </header>
+  ${content}
+</body>
+</html>`;
   }
 
-  private drawPageFooters(document: PDFKit.PDFDocument) {
-    const pageRange = document.bufferedPageRange();
+  private renderStage(rankings: FamilyRanking[]) {
+    const stageTitle = this.getStageTitle(rankings[0].stageName);
+    const rankingRows = rankings
+      .sort(
+        (first, second) =>
+          first.rank - second.rank ||
+          first.familyName.localeCompare(second.familyName),
+      )
+      .map(
+        (ranking) => `
+          <tr>
+            <td>${ranking.rank}</td>
+            <td class="family-name">${this.escapeHtml(ranking.familyName)}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td><strong>${this.formatScore(ranking.totalScore)}</strong></td>
+          </tr>`,
+      )
+      .join('');
+    const details = rankings
+      .map((ranking) => this.renderFamilyDetails(ranking))
+      .join('');
 
-    for (let index = 0; index < pageRange.count; index += 1) {
-      document.switchToPage(pageRange.start + index);
-      document
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor('#6b7280')
-        .text(
-          `Page ${index + 1} of ${pageRange.count}`,
-          document.page.margins.left,
-          document.page.height - 24,
-          {
-            width:
-              document.page.width -
-              document.page.margins.left -
-              document.page.margins.right,
-            align: 'center',
-          },
-        );
+    return `
+      <section class="stage-section">
+        <h2 class="stage-title">${this.escapeHtml(stageTitle)}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th class="rank-column">الترتيب</th>
+              <th class="family-column">الأسرة</th>
+              <th class="week-column">الأسبوع الأول</th>
+              <th class="week-column">الأسبوع الثاني</th>
+              <th class="week-column">الأسبوع الثالث</th>
+              <th class="total-column">المجموع النهائي</th>
+            </tr>
+          </thead>
+          <tbody>${rankingRows}</tbody>
+        </table>
+        <h3 class="details-heading">تفاصيل اللجان</h3>
+        ${details}
+      </section>`;
+  }
+
+  private renderFamilyDetails(ranking: FamilyRanking) {
+    const rows =
+      ranking.committeeBreakdown.length > 0
+        ? ranking.committeeBreakdown
+            .map(
+              (committee) => `
+                <tr>
+                  <td class="committee-name">${this.escapeHtml(committee.committeeName)}</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>${this.formatScore(committee.weightedScore)}</td>
+                </tr>`,
+            )
+            .join('')
+        : '<tr><td colspan="5">لا توجد درجات مسجلة</td></tr>';
+
+    return `
+      <div class="family-details">
+        <h4 class="family-details-title">${this.escapeHtml(ranking.familyName)} - الترتيب ${ranking.rank}</h4>
+        <table class="details-table">
+          <thead>
+            <tr>
+              <th>اللجنة</th>
+              <th>الأسبوع الأول</th>
+              <th>الأسبوع الثاني</th>
+              <th>الأسبوع الثالث</th>
+              <th>المجموع</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  private getBrowserExecutablePath() {
+    const candidates = [
+      process.env.PUPPETEER_EXECUTABLE_PATH,
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    const executablePath = candidates.find((candidate) =>
+      existsSync(candidate),
+    );
+
+    if (!executablePath) {
+      throw new InternalServerErrorException(
+        'Chrome or Edge is required to generate PDF reports.',
+      );
     }
+
+    return executablePath;
+  }
+
+  private getStageTitle(stageName: string) {
+    if (stageName.includes('متوسط')) {
+      return 'المرحلة المتوسطة';
+    }
+
+    if (stageName.includes('ثانوي')) {
+      return 'المرحلة الثانوية';
+    }
+
+    return stageName;
+  }
+
+  private getStageOrder(stageName: string) {
+    if (stageName.includes('متوسط')) {
+      return 1;
+    }
+
+    if (stageName.includes('ثانوي')) {
+      return 2;
+    }
+
+    return 3;
+  }
+
+  private formatScore(value: number) {
+    return Number(value.toFixed(2)).toString();
+  }
+
+  private escapeHtml(value: string) {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
   }
 }

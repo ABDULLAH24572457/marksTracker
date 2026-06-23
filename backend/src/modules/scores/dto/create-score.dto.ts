@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsUUID, Min } from 'class-validator';
+import { IsInt, IsUUID, Min } from 'class-validator';
 
 export class CreateScoreDto {
   @IsUUID()
@@ -12,7 +12,7 @@ export class CreateScoreDto {
   criterionId: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsInt()
   @Min(0)
   score: number;
 }

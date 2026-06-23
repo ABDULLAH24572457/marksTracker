@@ -37,6 +37,17 @@ export class ScoresController {
     return this.scoresService.findAll(user);
   }
 
+  @Get('context')
+  getContext(@CurrentUser() user: AuthenticatedUser) {
+    return this.scoresService.getContext(user);
+  }
+
+  @Post('reset')
+  @Roles(Role.ADMIN)
+  reset(@CurrentUser() user: AuthenticatedUser) {
+    return this.scoresService.reset(user);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', new ParseUUIDPipe()) id: string,

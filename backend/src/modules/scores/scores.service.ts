@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, ScoringCycleStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { CreateScoreDto } from './dto/create-score.dto';
@@ -35,7 +35,10 @@ const scoreInclude = {
     select: {
       id: true,
       title: true,
+      description: true,
       maxScore: true,
+      displayOrder: true,
+      committeeId: true,
       committee: {
         select: {
           id: true,
@@ -114,6 +117,120 @@ export class ScoresService {
         createdAt: 'desc',
       },
     });
+  }
+
+  async getContext(user: AuthenticatedUser) {
+    const committeeId =
+      user.role === UserRole.DATA_ENTRY
+        ? this.getAssignedCommitteeId(user)
+        : undefined;
+    const [scoringCycle, families, criteria] = await Promise.all([
+      this.prisma.scoringCycle.findFirst({
+        where: {
+          status: ScoringCycleStatus.ACTIVE,
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+      }),
+      this.prisma.family.findMany({
+        select: {
+          id: true,
+          name: true,
+          stageId: true,
+          stage: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [
+          {
+            stage: {
+              name: 'asc',
+            },
+          },
+          {
+            name: 'asc',
+          },
+        ],
+      }),
+      this.prisma.criterion.findMany({
+        where: committeeId ? { committeeId } : undefined,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          maxScore: true,
+          displayOrder: true,
+          committeeId: true,
+          committee: {
+            select: {
+              id: true,
+              name: true,
+              isLocked: true,
+            },
+          },
+        },
+        orderBy: [
+          {
+            committee: {
+              name: 'asc',
+            },
+          },
+          {
+            displayOrder: 'asc',
+          },
+        ],
+      }),
+    ]);
+
+    if (!scoringCycle) {
+      throw new NotFoundException(
+        'No active scoring cycle was found. An administrator must activate a scoring cycle before score entry.',
+      );
+    }
+
+    return {
+      scoringCycle,
+      families,
+      criteria,
+    };
+  }
+
+  async reset(user: AuthenticatedUser) {
+    const deletedCount = await this.prisma.$transaction(
+      async (transaction) => {
+        const deletedScores = await transaction.score.deleteMany();
+
+        await transaction.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'RESET_ALL_SCORES',
+            entityType: 'Score',
+            oldValue: {
+              scoreCount: deletedScores.count,
+            },
+            newValue: {
+              scoreCount: 0,
+            },
+          },
+        });
+
+        return deletedScores.count;
+      },
+    );
+
+    return {
+      message: 'تم تصفير الدرجات بنجاح',
+      deletedCount,
+    };
   }
 
   async findOne(id: string, user: AuthenticatedUser) {

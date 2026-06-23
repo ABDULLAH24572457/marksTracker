@@ -26,6 +26,11 @@ const userResponseSelect = {
   updatedAt: true,
 } satisfies Prisma.UserSelect;
 
+const PROTECTED_ADMIN_EMAILS = new Set([
+  'ab443442@gmail.com',
+  'admin@example.com',
+]);
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -130,7 +135,23 @@ export class UsersService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (PROTECTED_ADMIN_EMAILS.has(user.email.toLowerCase())) {
+      throw new ConflictException(
+        'لا يمكن حذف حساب المدير الأساسي',
+      );
+    }
 
     try {
       return await this.prisma.user.delete({

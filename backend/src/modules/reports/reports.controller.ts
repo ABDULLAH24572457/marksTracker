@@ -34,7 +34,7 @@ export class ReportsController {
     response.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition':
-        'attachment; filename="final-results.pdf"',
+        'attachment; filename="detailed-results.pdf"',
       'Content-Length': pdf.length.toString(),
     });
 

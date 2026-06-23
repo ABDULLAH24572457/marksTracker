@@ -1,0 +1,60 @@
+@import '@fontsource/noto-sans-arabic/arabic-400.css';
+@import '@fontsource/noto-sans-arabic/arabic-500.css';
+@import '@fontsource/noto-sans-arabic/arabic-600.css';
+@import '@fontsource/noto-sans-arabic/arabic-700.css';
+@import '@fontsource/noto-sans-arabic/latin-400.css';
+@import '@fontsource/noto-sans-arabic/latin-500.css';
+@import '@fontsource/noto-sans-arabic/latin-600.css';
+@import '@fontsource/noto-sans-arabic/latin-700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    direction: rtl;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: #f8fafc;
+    color: #000000;
+    font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/25;
+    border-radius: 6px;
+  }
+
+  .btn-primary {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 6px;
+  }
+
+  .btn-secondary {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-primary transition hover:border-primary/30 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 6px;
+  }
+
+  .icon-button {
+    @apply inline-flex size-9 items-center justify-center border border-slate-200 bg-white text-slate-600 transition hover:border-primary/20 hover:bg-slate-50 hover:text-primary disabled:opacity-40;
+    border-radius: 6px;
+  }
+}

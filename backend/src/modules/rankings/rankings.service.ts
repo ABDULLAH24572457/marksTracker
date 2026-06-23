@@ -14,8 +14,11 @@ export type CommitteeBreakdown = {
 export type FamilyRanking = {
   familyId: string;
   familyName: string;
+  stageId: string;
+  stageName: string;
   totalScore: number;
   rank: number;
+  overallRank: number;
   committeeBreakdown: CommitteeBreakdown[];
 };
 
@@ -49,6 +52,12 @@ export class RankingsService {
       select: {
         id: true,
         name: true,
+        stage: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         scores: {
           where: {
             scoringCycleId: scoringCycle.id,
@@ -72,17 +81,23 @@ export class RankingsService {
       },
     });
 
-    const rankings = families
-      .map((family) => this.calculateFamilyRanking(family))
-      .sort(
-        (first, second) =>
-          second.totalScore - first.totalScore ||
-          first.familyName.localeCompare(second.familyName),
-      );
+    const calculatedRankings = families.map((family) =>
+      this.calculateFamilyRanking(family),
+    );
+    const overallRankings = this.assignRanks(
+      [...calculatedRankings].sort(this.compareRankings),
+      'overallRank',
+    );
+    const rankings = this.assignStageRanks(overallRankings).sort(
+      (first, second) =>
+        first.stageName.localeCompare(second.stageName) ||
+        first.rank - second.rank ||
+        first.familyName.localeCompare(second.familyName),
+    );
 
     return {
       scoringCycle,
-      rankings: this.assignRanks(rankings),
+      rankings,
     };
   }
 
@@ -132,6 +147,10 @@ export class RankingsService {
   private calculateFamilyRanking(family: {
     id: string;
     name: string;
+    stage: {
+      id: string;
+      name: string;
+    };
     scores: Array<{
       score: Prisma.Decimal;
       criterion: {
@@ -200,13 +219,36 @@ export class RankingsService {
     return {
       familyId: family.id,
       familyName: family.name,
+      stageId: family.stage.id,
+      stageName: family.stage.name,
       totalScore: this.toNumber(totalScore, 4),
       rank: 0,
+      overallRank: 0,
       committeeBreakdown,
     };
   }
 
-  private assignRanks(rankings: FamilyRanking[]): FamilyRanking[] {
+  private assignStageRanks(rankings: FamilyRanking[]): FamilyRanking[] {
+    const stageGroups = new Map<string, FamilyRanking[]>();
+
+    for (const ranking of rankings) {
+      const stageRankings = stageGroups.get(ranking.stageId) ?? [];
+      stageRankings.push(ranking);
+      stageGroups.set(ranking.stageId, stageRankings);
+    }
+
+    return Array.from(stageGroups.values()).flatMap((stageRankings) =>
+      this.assignRanks(
+        stageRankings.sort(this.compareRankings),
+        'rank',
+      ),
+    );
+  }
+
+  private assignRanks(
+    rankings: FamilyRanking[],
+    field: 'rank' | 'overallRank',
+  ): FamilyRanking[] {
     let previousScore: number | null = null;
     let previousRank = 0;
 
@@ -221,9 +263,16 @@ export class RankingsService {
 
       return {
         ...ranking,
-        rank,
+        [field]: rank,
       };
     });
+  }
+
+  private compareRankings(first: FamilyRanking, second: FamilyRanking) {
+    return (
+      second.totalScore - first.totalScore ||
+      first.familyName.localeCompare(second.familyName)
+    );
   }
 
   private toNumber(value: Prisma.Decimal, decimalPlaces: number): number {
