@@ -5,9 +5,9 @@
   "description": "NestJS backend foundation for educational camp family competition scoring.",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build --path tsconfig.build.json --builder tsc",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "nest start --watch --path tsconfig.build.json",
     "start:prod": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:format": "prisma format",
