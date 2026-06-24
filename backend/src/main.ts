@@ -6,10 +6,18 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('port', 3000);
+  const port = Number(
+    process.env.PORT ?? configService.get<number>('port', 3000),
+  );
+  const frontendUrl = configService.get<string>(
+    'frontendUrl',
+    'http://localhost:5173',
+  );
 
   app.setGlobalPrefix('api');
-  app.enableCors();
+  app.enableCors({
+    origin: frontendUrl,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
