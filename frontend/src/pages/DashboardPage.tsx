@@ -433,8 +433,7 @@ function UsersSection({
     setEditError("");
     const payload: Partial<UserInput> = {
       ...editForm,
-      committeeId:
-        editForm.role === "ADMIN" ? null : editForm.committeeId,
+      committeeId: editForm.role === "ADMIN" ? null : editForm.committeeId,
     };
     if (!payload.password) delete payload.password;
 
@@ -693,8 +692,9 @@ function CommitteesSection({
     weightPercentage: 0,
   };
   const [form, setForm] = useState<CommitteeInput>(emptyForm);
-  const [editingCommittee, setEditingCommittee] =
-    useState<Committee | null>(null);
+  const [editingCommittee, setEditingCommittee] = useState<Committee | null>(
+    null,
+  );
   const [editForm, setEditForm] = useState<CommitteeInput>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
@@ -1089,8 +1089,9 @@ function CriteriaSection({ committees }: { committees: Committee[] }) {
   };
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [form, setForm] = useState<CriterionInput>(emptyForm);
-  const [editingCriterion, setEditingCriterion] =
-    useState<Criterion | null>(null);
+  const [editingCriterion, setEditingCriterion] = useState<Criterion | null>(
+    null,
+  );
   const [editForm, setEditForm] = useState<CriterionInput>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

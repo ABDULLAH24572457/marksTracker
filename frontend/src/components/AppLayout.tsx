@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import logo from '../assets/logo.png';
 import { useAuth } from '../auth/AuthContext';
 
 const adminLinks = [
@@ -34,11 +35,13 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-canvas">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex min-h-20 max-w-[1500px] items-center justify-between px-4 sm:px-6 md:min-h-24">
           <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center bg-primary text-lg font-bold text-secondary">
-              م
-            </div>
+            <img
+              src={logo}
+              alt="شعار النظام"
+              className="h-16 w-auto shrink-0 bg-primary color-primary object-contain object-center md:h-20 hidden"//I added hidden to hide the logo on small screens
+            />
             <div>
               <div className="font-bold text-primary">متتبع الدرجات</div>
               <div className="text-xs text-slate-500">
